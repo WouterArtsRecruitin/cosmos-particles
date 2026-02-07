@@ -373,15 +373,15 @@ export default function ParticleGestureSystem() {
 
           vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
-          // Original cosmos sizing formula: size * 200.0 * (400.0 / -mvPosition.z)
-          float sizeBoost = 1.0 + uExplosion * 0.8;
+          // EXTREME explosion size boost
+          float sizeBoost = 1.0 + uExplosion * 4.0; // was 0.8, now 4.0 = 5x groter!
           gl_PointSize = aSize * 200.0 * uScale * sizeBoost * (400.0 / -mvPosition.z);
           gl_PointSize = max(gl_PointSize, 0.3);
           gl_Position = projectionMatrix * mvPosition;
 
           vAlpha = aBrightness;
-          vAlpha *= (1.0 + uExplosion * 1.5);
-          vAlpha = min(vAlpha, 1.8);
+          vAlpha *= (1.0 + uExplosion * 4.0); // was 1.5, now 4.0 = 5x helderder!
+          vAlpha = min(vAlpha, 3.0);
         }
       `,
       fragmentShader: `
@@ -405,9 +405,12 @@ export default function ParticleGestureSystem() {
           // Mix star catalog color with tint color
           vec3 color = mix(vColor * vAlpha, uTintColor, uTintAmount);
 
-          // Hot white core during explosion
-          float heat = uExplosion * exp(-dist * 4.0) * 0.7;
-          color += vec3(heat, heat * 0.8, heat * 0.5);
+          // EXTREME white-hot explosion effect
+          float heat = uExplosion * exp(-dist * 2.0) * 2.5; // was 0.7, now 2.5!
+          color += vec3(heat, heat * 0.9, heat * 0.7);
+
+          // Extra oranje glow tijdens explosie
+          color += vec3(uExplosion * 0.8, uExplosion * 0.4, 0.0);
 
           // Twinkle
           float twinkle = 0.88 + 0.12 * sin(uTime * 2.0 + vRandom * 50.0);
@@ -632,7 +635,7 @@ export default function ParticleGestureSystem() {
 
       // ── Explosion / transition phases ──
       if (exp.active) {
-        const speed = 3.5; // 2x sneller!
+        const speed = 2.0; // langzamer zodat explosie zichtbaar is!
         exp.progress += dt * speed;
 
         if (exp.phase === 'exploding') {
@@ -643,14 +646,14 @@ export default function ParticleGestureSystem() {
           if (exp.burstVelocities) {
             const damping = 1.0 - t * 0.5;
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-              vel[i] += exp.burstVelocities[i] * dt * 5.0 * damping; // snellere burst
-              vel[i] *= 0.95; // minder wrijving
+              vel[i] += exp.burstVelocities[i] * dt * 6.0 * damping; // nog snellere burst
+              vel[i] *= 0.93; // minder wrijving
               current[i] += vel[i];
             }
           }
 
-          if (exp.progress >= 0.5) {
-            // Switch to reforming phase - sneller!
+          if (exp.progress >= 1.0) {
+            // Langere explosie fase (was 0.5, now 1.0)
             exp.phase = 'reforming';
             exp.progress = 0;
             if (exp.pendingTarget) {
