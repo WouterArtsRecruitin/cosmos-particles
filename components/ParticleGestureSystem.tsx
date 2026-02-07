@@ -173,11 +173,12 @@ export default function ParticleGestureSystem() {
         const y = current[i3 + 1];
         const z = current[i3 + 2];
         const dist = Math.sqrt(x * x + y * y + z * z) || 0.01;
-        // EXTREME EXPLOSION: 3x meer kracht + grotere spreiding
-        const force = 1.2 + Math.random() * 2.0;
-        burstVel[i3] = (x / dist) * force + (Math.random() - 0.5) * 1.5;
-        burstVel[i3 + 1] = (y / dist) * force + (Math.random() - 0.5) * 1.5;
-        burstVel[i3 + 2] = (z / dist) * force + (Math.random() - 0.5) * 1.5;
+        // MEGA EXPLOSIE: deeltjes vliegen HEEL VER weg!
+        const force = 5.0 + Math.random() * 8.0; // was 1.2-3.2, now 5-13!
+        const chaos = (Math.random() - 0.5) * 6.0; // was 1.5, now 6.0!
+        burstVel[i3] = (x / dist) * force + chaos;
+        burstVel[i3 + 1] = (y / dist) * force + chaos;
+        burstVel[i3 + 2] = (z / dist) * force + chaos;
       }
     } else if (mode === 'vortex') {
       for (let i = 0; i < PARTICLE_COUNT; i++) {
@@ -642,12 +643,12 @@ export default function ParticleGestureSystem() {
           const t = Math.min(exp.progress, 1.0);
           material.uniforms.uExplosion.value = t;
 
-          // Apply burst velocities
+          // Apply burst velocities - deeltjes vliegen VER weg!
           if (exp.burstVelocities) {
-            const damping = 1.0 - t * 0.5;
+            const damping = 1.0 - t * 0.3; // minder damping = verder vliegen
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-              vel[i] += exp.burstVelocities[i] * dt * 6.0 * damping; // nog snellere burst
-              vel[i] *= 0.93; // minder wrijving
+              vel[i] += exp.burstVelocities[i] * dt * 10.0 * damping; // 10x force!
+              vel[i] *= 0.98; // bijna geen wrijving
               current[i] += vel[i];
             }
           }
