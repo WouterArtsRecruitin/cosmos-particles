@@ -168,10 +168,11 @@ export default function ParticleGestureSystem() {
         const y = current[i3 + 1];
         const z = current[i3 + 2];
         const dist = Math.sqrt(x * x + y * y + z * z) || 0.01;
-        const force = 0.3 + Math.random() * 0.5;
-        burstVel[i3] = (x / dist) * force + (Math.random() - 0.5) * 0.3;
-        burstVel[i3 + 1] = (y / dist) * force + (Math.random() - 0.5) * 0.3;
-        burstVel[i3 + 2] = (z / dist) * force + (Math.random() - 0.5) * 0.3;
+        // EXTREME EXPLOSION: 3x meer kracht + grotere spreiding
+        const force = 1.2 + Math.random() * 2.0;
+        burstVel[i3] = (x / dist) * force + (Math.random() - 0.5) * 1.5;
+        burstVel[i3 + 1] = (y / dist) * force + (Math.random() - 0.5) * 1.5;
+        burstVel[i3 + 2] = (z / dist) * force + (Math.random() - 0.5) * 1.5;
       }
     } else if (mode === 'vortex') {
       for (let i = 0; i < PARTICLE_COUNT; i++) {
@@ -644,8 +645,8 @@ export default function ParticleGestureSystem() {
             }
           }
 
-          if (exp.progress >= 0.6) {
-            // Switch to reforming phase
+          if (exp.progress >= 1.0) {
+            // Switch to reforming phase (verhoogd van 0.6 naar 1.0 voor langere explosie)
             exp.phase = 'reforming';
             exp.progress = 0;
             if (exp.pendingTarget) {
