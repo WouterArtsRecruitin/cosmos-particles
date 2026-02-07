@@ -11,8 +11,43 @@ const TRAIL_LENGTH = 2;
 const TRAIL_PARTICLE_COUNT = PARTICLE_COUNT * TRAIL_LENGTH;
 const BASE_SCALE = 15;       // matches original CORE_RADIUS=15, HALO_RADIUS=45
 const LERP_SPEED = 0.06;     // faster response for gesture control
+const SESSION_KEY = 'cosmos-particles-session';
 
 type TransitionMode = 'morph' | 'explode' | 'vortex';
+
+interface SessionData {
+  selectedTemplate: string;
+  selectedColor: { name: string; hex: string; rgb: number[] };
+  customColor: string;
+  transitionMode: TransitionMode;
+  showPanel: boolean;
+}
+
+function loadSession(): SessionData | null {
+  try {
+    const data = localStorage.getItem(SESSION_KEY);
+    if (!data) return null;
+    const parsed = JSON.parse(data);
+    if (typeof parsed.selectedTemplate !== 'string') return null;
+    if (!parsed.selectedColor?.hex || !Array.isArray(parsed.selectedColor?.rgb)) return null;
+    if (typeof parsed.customColor !== 'string') return null;
+    if (!['morph', 'explode', 'vortex'].includes(parsed.transitionMode)) return null;
+    if (typeof parsed.showPanel !== 'boolean') return null;
+    // Validate template exists
+    if (!PARTICLE_TEMPLATES.find(t => t.id === parsed.selectedTemplate)) return null;
+    return parsed as SessionData;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(data: SessionData): void {
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+  } catch {
+    // localStorage may be full or disabled
+  }
+}
 
 const TRANSITION_MODES: { id: TransitionMode; name: string; icon: string }[] = [
   { id: 'morph', name: 'Morph', icon: '~' },
@@ -21,6 +56,7 @@ const TRANSITION_MODES: { id: TransitionMode; name: string; icon: string }[] = [
 ];
 
 export default function ParticleGestureSystem() {
+  const savedSessionRef = useRef(loadSession());
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -54,13 +90,24 @@ export default function ParticleGestureSystem() {
   });
 
   const [cameraEnabled, setCameraEnabled] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('cosmos');
-  const [selectedColor, setSelectedColor] = useState(PRESET_COLORS[0]);
-  const [customColor, setCustomColor] = useState('#FFD700');
-  const [showPanel, setShowPanel] = useState(true);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>(
+    savedSessionRef.current?.selectedTemplate ?? 'cosmos'
+  );
+  const [selectedColor, setSelectedColor] = useState(
+    savedSessionRef.current?.selectedColor ?? PRESET_COLORS[0]
+  );
+  const [customColor, setCustomColor] = useState(
+    savedSessionRef.current?.customColor ?? '#FFD700'
+  );
+  const [showPanel, setShowPanel] = useState(
+    savedSessionRef.current?.showPanel ?? true
+  );
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [gestureInfo, setGestureInfo] = useState('');
-  const [transitionMode, setTransitionMode] = useState<TransitionMode>('explode');
+  const [transitionMode, setTransitionMode] = useState<TransitionMode>(
+    savedSessionRef.current?.transitionMode ?? 'explode'
+  );
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [captureFlash, setCaptureFlash] = useState(false);
   const [showCameraPreview, setShowCameraPreview] = useState(true);
@@ -224,6 +271,14 @@ export default function ParticleGestureSystem() {
     if (!containerRef.current) return;
     const container = containerRef.current;
 
+    // Loading timeout: if setup takes too long, show error
+    const loadingTimeout = setTimeout(() => {
+      setIsLoading(false);
+      setLoadError(true);
+    }, 15000);
+
+    try {
+
     // Scene (matches original cosmos - pure black, no fog)
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
@@ -243,7 +298,9 @@ export default function ParticleGestureSystem() {
     rendererRef.current = renderer;
 
     // ── Main particles (55k with original cosmos star catalog) ──
-    const initialPositions = PARTICLE_TEMPLATES[0].generate(PARTICLE_COUNT, BASE_SCALE);
+    const saved = savedSessionRef.current;
+    const initTemplate = (saved ? PARTICLE_TEMPLATES.find(t => t.id === saved.selectedTemplate) : null) ?? PARTICLE_TEMPLATES[0];
+    const initialPositions = initTemplate.generate(PARTICLE_COUNT, BASE_SCALE);
     currentPositionsRef.current = new Float32Array(initialPositions);
     targetPositionsRef.current = new Float32Array(initialPositions);
     velocitiesRef.current = new Float32Array(PARTICLE_COUNT * 3);
@@ -263,11 +320,14 @@ export default function ParticleGestureSystem() {
     }
     geometry.setAttribute('aRandom', new THREE.Float32BufferAttribute(randoms, 1));
 
+    const initColor = saved?.selectedColor ?? PRESET_COLORS[0];
+    const initTintAmount = saved?.selectedColor ? 0.55 : 0.0;
+
     const material = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
-        uTintColor: { value: new THREE.Vector3(PRESET_COLORS[0].rgb[0], PRESET_COLORS[0].rgb[1], PRESET_COLORS[0].rgb[2]) },
-        uTintAmount: { value: 0.0 },  // 0 = star colors, 1 = full tint
+        uTintColor: { value: new THREE.Vector3(initColor.rgb[0], initColor.rgb[1], initColor.rgb[2]) },
+        uTintAmount: { value: initTintAmount },  // 0 = star colors, 1 = full tint
         uScale: { value: 1.0 },
         uExplosion: { value: 0.0 },
         uPulse: { value: 0.0 },
@@ -388,7 +448,7 @@ export default function ParticleGestureSystem() {
 
     const trailMaterial = new THREE.ShaderMaterial({
       uniforms: {
-        uColor: { value: new THREE.Vector3(PRESET_COLORS[0].rgb[0], PRESET_COLORS[0].rgb[1], PRESET_COLORS[0].rgb[2]) },
+        uColor: { value: new THREE.Vector3(initColor.rgb[0], initColor.rgb[1], initColor.rgb[2]) },
         uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
       },
       vertexShader: `
@@ -448,6 +508,7 @@ export default function ParticleGestureSystem() {
     const dust = new THREE.Points(dustGeometry, dustMaterial);
     scene.add(dust);
 
+    clearTimeout(loadingTimeout);
     setIsLoading(false);
 
     // ── Mouse / touch interaction ──
@@ -712,6 +773,7 @@ export default function ParticleGestureSystem() {
     animate();
 
     return () => {
+      clearTimeout(loadingTimeout);
       if (animationIdRef.current) cancelAnimationFrame(animationIdRef.current);
       if (autoRotateTimeout) clearTimeout(autoRotateTimeout);
       container.removeEventListener('mousedown', handleMouseDown);
@@ -725,6 +787,13 @@ export default function ParticleGestureSystem() {
       renderer.dispose();
       if (container.contains(renderer.domElement)) container.removeChild(renderer.domElement);
     };
+
+    } catch (error) {
+      clearTimeout(loadingTimeout);
+      console.error('Failed to initialize particle system:', error);
+      setIsLoading(false);
+      setLoadError(true);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -898,10 +967,26 @@ export default function ParticleGestureSystem() {
     };
   }, [handleTemplateChange, firePulse, captureScreenshot]);
 
-  // ── React to template changes ──
+  // ── React to template changes (skip initial mount since Three.js setup handles it) ──
+  const isInitialMountRef = useRef(true);
   useEffect(() => {
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false;
+      return;
+    }
     generateTemplate(selectedTemplate, BASE_SCALE);
   }, [selectedTemplate, generateTemplate]);
+
+  // ── Persist session to localStorage ──
+  useEffect(() => {
+    saveSession({
+      selectedTemplate,
+      selectedColor,
+      customColor,
+      transitionMode,
+      showPanel,
+    });
+  }, [selectedTemplate, selectedColor, customColor, transitionMode, showPanel]);
 
   // ─────────────────────────────── RENDER ───────────────────────────────
   return (
@@ -911,6 +996,20 @@ export default function ParticleGestureSystem() {
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-white/60 text-lg font-light animate-pulse">Deeltjes laden...</div>
+        </div>
+      )}
+
+      {loadError && !isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="text-center">
+            <div className="text-white/60 text-lg font-light mb-2">Kan deeltjessysteem niet laden</div>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white/70 text-sm hover:bg-white/15 transition-all"
+            >
+              Opnieuw proberen
+            </button>
+          </div>
         </div>
       )}
 
