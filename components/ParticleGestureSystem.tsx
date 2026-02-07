@@ -130,14 +130,19 @@ export default function ParticleGestureSystem() {
   const triggerTransition = useCallback((newTarget: Float32Array) => {
     const current = currentPositionsRef.current;
     const vel = velocitiesRef.current;
-    if (!current || !vel) return;
+    if (!current || !vel) {
+      console.log('[Cosmos] triggerTransition blocked - refs not ready');
+      return;
+    }
 
     const mode = transitionModeRef.current;
     const exp = explosionRef.current;
+    console.log('[Cosmos] triggerTransition starting -', 'mode:', mode, 'exp.active:', exp.active);
 
     if (mode === 'morph') {
       // Simple morph: just set target, spring physics does the rest
       targetPositionsRef.current = newTarget;
+      console.log('[Cosmos] Morph mode - target set');
       return;
     }
 
@@ -151,10 +156,12 @@ export default function ParticleGestureSystem() {
         const y = current[i3 + 1];
         const z = current[i3 + 2];
         const dist = Math.sqrt(x * x + y * y + z * z) || 0.01;
-        const force = 0.3 + Math.random() * 0.5;
-        burstVel[i3] = (x / dist) * force + (Math.random() - 0.5) * 0.3;
-        burstVel[i3 + 1] = (y / dist) * force + (Math.random() - 0.5) * 0.3;
-        burstVel[i3 + 2] = (z / dist) * force + (Math.random() - 0.5) * 0.3;
+        // EXTREME EXPLOSIE: deeltjes vliegen OVER HET SCHERM!!!
+        const force = 50.0 + Math.random() * 100.0; // ENORM: 50-150 (was 5-13)!
+        const chaos = (Math.random() - 0.5) * 30.0; // chaos 30 (was 6.0)!
+        burstVel[i3] = (x / dist) * force + chaos;
+        burstVel[i3 + 1] = (y / dist) * force + chaos;
+        burstVel[i3 + 2] = (z / dist) * force + chaos;
       }
     } else if (mode === 'vortex') {
       for (let i = 0; i < PARTICLE_COUNT; i++) {
@@ -198,10 +205,9 @@ export default function ParticleGestureSystem() {
   }, []);
 
   const handleTemplateChange = useCallback((templateId: string) => {
-    if (explosionRef.current.active) return; // prevent spam
+    // Don't block - just set the template, useEffect will handle the transition
     setSelectedTemplate(templateId);
-    generateTemplate(templateId, BASE_SCALE);
-  }, [generateTemplate]);
+  }, []);
 
   const handleColorChange = useCallback((color: typeof PRESET_COLORS[0]) => {
     setSelectedColor(color);
@@ -351,15 +357,15 @@ export default function ParticleGestureSystem() {
 
           vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
-          // Original cosmos sizing formula: size * 200.0 * (400.0 / -mvPosition.z)
-          float sizeBoost = 1.0 + uExplosion * 0.8;
+          // EXTREME explosion size boost
+          float sizeBoost = 1.0 + uExplosion * 4.0; // was 0.8, now 4.0 = 5x groter!
           gl_PointSize = aSize * 200.0 * uScale * sizeBoost * (400.0 / -mvPosition.z);
           gl_PointSize = max(gl_PointSize, 0.3);
           gl_Position = projectionMatrix * mvPosition;
 
           vAlpha = aBrightness;
-          vAlpha *= (1.0 + uExplosion * 1.5);
-          vAlpha = min(vAlpha, 1.8);
+          vAlpha *= (1.0 + uExplosion * 4.0); // was 1.5, now 4.0 = 5x helderder!
+          vAlpha = min(vAlpha, 3.0);
         }
       `,
       fragmentShader: `
@@ -383,9 +389,12 @@ export default function ParticleGestureSystem() {
           // Mix star catalog color with tint color
           vec3 color = mix(vColor * vAlpha, uTintColor, uTintAmount);
 
-          // Hot white core during explosion
-          float heat = uExplosion * exp(-dist * 4.0) * 0.7;
-          color += vec3(heat, heat * 0.8, heat * 0.5);
+          // EXTREME white-hot explosion effect
+          float heat = uExplosion * exp(-dist * 2.0) * 2.5; // was 0.7, now 2.5!
+          color += vec3(heat, heat * 0.9, heat * 0.7);
+
+          // Extra oranje glow tijdens explosie
+          color += vec3(uExplosion * 0.8, uExplosion * 0.4, 0.0);
 
           // Twinkle
           float twinkle = 0.88 + 0.12 * sin(uTime * 2.0 + vRandom * 50.0);
@@ -629,57 +638,59 @@ export default function ParticleGestureSystem() {
 
       // ── Explosion / transition phases ──
       if (exp.active) {
-        const speed = 1.8;
+        const speed = 0.8; // LANGZAAM zodat je explosie ECHT ziet!
         exp.progress += dt * speed;
 
         if (exp.phase === 'exploding') {
           const t = Math.min(exp.progress, 1.0);
           material.uniforms.uExplosion.value = t;
 
-          // Apply burst velocities
+          // DIRECT EXPLOSION - geen physics, gewoon VLIEGEN!
           if (exp.burstVelocities) {
-            const damping = 1.0 - t * 0.5;
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-              vel[i] += exp.burstVelocities[i] * dt * 3.0 * damping;
-              vel[i] *= 0.97;
-              current[i] += vel[i];
+              // EXTREME KRACHT: 500x sneller dan normaal!!!
+              current[i] += exp.burstVelocities[i] * dt * 500.0; // was 100x, now 500x!!!
+              // Velocity blijft constant = particles blijven vliegen
+              vel[i] = exp.burstVelocities[i];
             }
           }
 
-          if (exp.progress >= 0.6) {
-            // Switch to reforming phase
+          if (exp.progress >= 1.5) {
+            // LANG wachten (1.5 / 0.8 = 1.875 seconden explosie!)
             exp.phase = 'reforming';
             exp.progress = 0;
             if (exp.pendingTarget) {
               targetPositionsRef.current = exp.pendingTarget;
             }
+            console.log('[Cosmos] Explosion complete, reforming...');
           }
         } else if (exp.phase === 'reforming') {
-          const t = Math.min(exp.progress / 1.2, 1.0);
+          const t = Math.min(exp.progress / 0.8, 1.0); // kortere reforming fase
           material.uniforms.uExplosion.value = Math.max(0, 1.0 - t * 1.5);
 
           const reformTarget = targetPositionsRef.current;
           if (reformTarget) {
             const gestureScale = gestureScaleRef.current;
             const offsets = [offset.x, offset.y, offset.z];
-            const lerpFactor = 0.02 + t * 0.06; // accelerating lerp
+            const lerpFactor = 0.15 + t * 0.25; // VEEL sneller: 10x sterker
 
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
               const scaledTarget = reformTarget[i] * gestureScale + offsets[i % 3];
               const diff = scaledTarget - current[i];
               vel[i] += diff * lerpFactor;
-              vel[i] *= 0.88;
+              vel[i] *= 0.85; // minder damping voor snellere beweging
               current[i] += vel[i];
             }
           }
 
-          if (exp.progress >= 1.2) {
+          if (exp.progress >= 0.8) { // sneller klaar
             exp.active = false;
             exp.phase = 'idle';
             exp.burstVelocities = null;
             exp.pendingTarget = null;
             material.uniforms.uExplosion.value = 0;
             setIsTransitioning(false);
+            console.log('[Cosmos] Transition complete!');
           }
         }
       } else {
@@ -952,10 +963,12 @@ export default function ParticleGestureSystem() {
   useEffect(() => {
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false;
+      console.log('[Cosmos] Initial mount - skipping transition');
       return;
     }
+    console.log('[Cosmos] Template changed to:', selectedTemplate, 'Mode:', transitionMode);
     generateTemplate(selectedTemplate, BASE_SCALE);
-  }, [selectedTemplate, generateTemplate]);
+  }, [selectedTemplate, generateTemplate, transitionMode]);
 
   // ── Persist session to localStorage ──
   useEffect(() => {

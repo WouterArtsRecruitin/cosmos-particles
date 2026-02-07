@@ -331,12 +331,7 @@ function generateCosmos(count: number, scale: number): Float32Array {
 export const PARTICLE_TEMPLATES: ParticleTemplate[] = [
   { id: 'cosmos', name: 'Cosmos', icon: '✦', generate: generateCosmos },
   { id: 'heart', name: 'Hart', icon: '♥', generate: generateHeart },
-  { id: 'flower', name: 'Bloem', icon: '❀', generate: generateFlower },
   { id: 'saturn', name: 'Saturnus', icon: '♄', generate: generateSaturn },
-  { id: 'buddha', name: 'Boeddha', icon: '☸', generate: generateBuddha },
-  { id: 'fireworks', name: 'Vuurwerk', icon: '✺', generate: generateFireworks },
-  { id: 'star', name: 'Ster', icon: '★', generate: generateStar },
-  { id: 'galaxy', name: 'Melkweg', icon: '⊛', generate: generateGalaxy },
   { id: 'dna', name: 'DNA', icon: '⧬', generate: generateDNA },
 ];
 
