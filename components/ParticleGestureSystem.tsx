@@ -636,7 +636,7 @@ export default function ParticleGestureSystem() {
 
       // ── Explosion / transition phases ──
       if (exp.active) {
-        const speed = 2.0; // langzamer zodat explosie zichtbaar is!
+        const speed = 0.8; // LANGZAAM zodat je explosie ECHT ziet!
         exp.progress += dt * speed;
 
         if (exp.phase === 'exploding') {
@@ -645,16 +645,16 @@ export default function ParticleGestureSystem() {
 
           // Apply burst velocities - deeltjes vliegen VER weg!
           if (exp.burstVelocities) {
-            const damping = 1.0 - t * 0.3; // minder damping = verder vliegen
+            const damping = 1.0 - t * 0.2; // nog minder damping
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-              vel[i] += exp.burstVelocities[i] * dt * 10.0 * damping; // 10x force!
-              vel[i] *= 0.98; // bijna geen wrijving
+              vel[i] += exp.burstVelocities[i] * dt * 15.0 * damping; // 15x force!
+              vel[i] *= 0.99; // bijna GEEN wrijving
               current[i] += vel[i];
             }
           }
 
-          if (exp.progress >= 1.0) {
-            // Langere explosie fase (was 0.5, now 1.0)
+          if (exp.progress >= 1.5) {
+            // LANG wachten (1.5 / 0.8 = 1.875 seconden explosie!)
             exp.phase = 'reforming';
             exp.progress = 0;
             if (exp.pendingTarget) {
