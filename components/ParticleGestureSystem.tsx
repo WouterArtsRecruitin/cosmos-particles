@@ -115,8 +115,7 @@ export default function ParticleGestureSystem() {
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const gestureScaleRef = useRef(1.0);
-  const gestureRotXRef = useRef(0);
-  const gestureRotYRef = useRef(0);
+  const gestureOffsetRef = useRef({ x: 0, y: 0, z: 0 });
   const prevHandsRef = useRef(0);
   const transitionModeRef = useRef<TransitionMode>('explode');
 
@@ -609,6 +608,25 @@ export default function ParticleGestureSystem() {
         }
       }
 
+      // ── Gesture: update offset + scale (before physics so offset is available) ──
+      const g = gestureDataRef.current;
+      const offset = gestureOffsetRef.current;
+      if (g.handsDetected > 0) {
+        gestureScaleRef.current += (g.scale - gestureScaleRef.current) * 0.18;
+
+        const handWorldX = (0.5 - g.centerX) * 50;
+        const handWorldY = (0.5 - g.centerY) * 35;
+        const followSpeed = 0.06 + g.averageOpenness * 0.08;
+        offset.x += (handWorldX - offset.x) * followSpeed;
+        offset.y += (handWorldY - offset.y) * followSpeed;
+        offset.z *= 0.95;
+      } else {
+        gestureScaleRef.current += (1.0 - gestureScaleRef.current) * 0.04;
+        offset.x *= 0.96;
+        offset.y *= 0.96;
+        offset.z *= 0.96;
+      }
+
       // ── Explosion / transition phases ──
       if (exp.active) {
         const speed = 1.8;
@@ -643,10 +661,11 @@ export default function ParticleGestureSystem() {
           const reformTarget = targetPositionsRef.current;
           if (reformTarget) {
             const gestureScale = gestureScaleRef.current;
+            const offsets = [offset.x, offset.y, offset.z];
             const lerpFactor = 0.02 + t * 0.06; // accelerating lerp
 
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-              const scaledTarget = reformTarget[i] * gestureScale;
+              const scaledTarget = reformTarget[i] * gestureScale + offsets[i % 3];
               const diff = scaledTarget - current[i];
               vel[i] += diff * lerpFactor;
               vel[i] *= 0.88;
@@ -666,8 +685,9 @@ export default function ParticleGestureSystem() {
       } else {
         // ── Normal spring physics (no explosion active) ──
         const gestureScale = gestureScaleRef.current;
+        const offsets = [offset.x, offset.y, offset.z];
         for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-          const scaledTarget = target[i] * gestureScale;
+          const scaledTarget = target[i] * gestureScale + offsets[i % 3];
           const diff = scaledTarget - current[i];
           vel[i] += diff * LERP_SPEED;
           vel[i] *= 0.92;
@@ -717,27 +737,6 @@ export default function ParticleGestureSystem() {
         const trailAlphaAttr = trailPoints.geometry.getAttribute('aAlpha') as THREE.BufferAttribute;
         trailAlphaAttr.set(trailAlpha);
         trailAlphaAttr.needsUpdate = true;
-      }
-
-      // ── Gesture control (read directly from hook ref — no React state delay) ──
-      const g = gestureDataRef.current;
-      if (g.handsDetected > 0) {
-        // Scale: single smooth lerp (hook already does light smoothing)
-        gestureScaleRef.current += (g.scale - gestureScaleRef.current) * 0.18;
-
-        // Rotation: map hand position to rotation, single smooth lerp
-        const targetRotY = (g.centerX - 0.5) * Math.PI * 0.6;
-        const targetRotX = (g.centerY - 0.5) * Math.PI * 0.4;
-        gestureRotYRef.current += (targetRotY - gestureRotYRef.current) * 0.12;
-        gestureRotXRef.current += (targetRotX - gestureRotXRef.current) * 0.12;
-        // Apply to particles
-        particles.rotation.y += (gestureRotYRef.current - particles.rotation.y) * 0.10;
-        particles.rotation.x += (gestureRotXRef.current - particles.rotation.x) * 0.10;
-        trailPoints.rotation.y = particles.rotation.y;
-        trailPoints.rotation.x = particles.rotation.x;
-      } else {
-        // Smoothly return scale to 1.0 when no hands
-        gestureScaleRef.current += (1.0 - gestureScaleRef.current) * 0.04;
       }
 
       // ── Auto rotation (only when no hands and not dragging) ──
