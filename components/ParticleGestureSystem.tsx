@@ -147,14 +147,19 @@ export default function ParticleGestureSystem() {
   const triggerTransition = useCallback((newTarget: Float32Array) => {
     const current = currentPositionsRef.current;
     const vel = velocitiesRef.current;
-    if (!current || !vel) return;
+    if (!current || !vel) {
+      console.log('[Cosmos] triggerTransition blocked - refs not ready');
+      return;
+    }
 
     const mode = transitionModeRef.current;
     const exp = explosionRef.current;
+    console.log('[Cosmos] triggerTransition starting -', 'mode:', mode, 'exp.active:', exp.active);
 
     if (mode === 'morph') {
       // Simple morph: just set target, spring physics does the rest
       targetPositionsRef.current = newTarget;
+      console.log('[Cosmos] Morph mode - target set');
       return;
     }
 
@@ -216,10 +221,9 @@ export default function ParticleGestureSystem() {
   }, []);
 
   const handleTemplateChange = useCallback((templateId: string) => {
-    if (explosionRef.current.active) return; // prevent spam
+    // Don't block - just set the template, useEffect will handle the transition
     setSelectedTemplate(templateId);
-    generateTemplate(templateId, BASE_SCALE);
-  }, [generateTemplate]);
+  }, []);
 
   const handleColorChange = useCallback((color: typeof PRESET_COLORS[0]) => {
     setSelectedColor(color);
@@ -973,10 +977,12 @@ export default function ParticleGestureSystem() {
   useEffect(() => {
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false;
+      console.log('[Cosmos] Initial mount - skipping transition');
       return;
     }
+    console.log('[Cosmos] Template changed to:', selectedTemplate, 'Mode:', transitionMode);
     generateTemplate(selectedTemplate, BASE_SCALE);
-  }, [selectedTemplate, generateTemplate]);
+  }, [selectedTemplate, generateTemplate, transitionMode]);
 
   // ── Persist session to localStorage ──
   useEffect(() => {
