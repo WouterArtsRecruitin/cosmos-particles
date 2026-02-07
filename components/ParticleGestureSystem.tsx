@@ -632,7 +632,7 @@ export default function ParticleGestureSystem() {
 
       // ── Explosion / transition phases ──
       if (exp.active) {
-        const speed = 1.8;
+        const speed = 3.5; // 2x sneller!
         exp.progress += dt * speed;
 
         if (exp.phase === 'exploding') {
@@ -643,45 +643,47 @@ export default function ParticleGestureSystem() {
           if (exp.burstVelocities) {
             const damping = 1.0 - t * 0.5;
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-              vel[i] += exp.burstVelocities[i] * dt * 3.0 * damping;
-              vel[i] *= 0.97;
+              vel[i] += exp.burstVelocities[i] * dt * 5.0 * damping; // snellere burst
+              vel[i] *= 0.95; // minder wrijving
               current[i] += vel[i];
             }
           }
 
-          if (exp.progress >= 1.0) {
-            // Switch to reforming phase (verhoogd van 0.6 naar 1.0 voor langere explosie)
+          if (exp.progress >= 0.5) {
+            // Switch to reforming phase - sneller!
             exp.phase = 'reforming';
             exp.progress = 0;
             if (exp.pendingTarget) {
               targetPositionsRef.current = exp.pendingTarget;
             }
+            console.log('[Cosmos] Explosion complete, reforming...');
           }
         } else if (exp.phase === 'reforming') {
-          const t = Math.min(exp.progress / 1.2, 1.0);
+          const t = Math.min(exp.progress / 0.8, 1.0); // kortere reforming fase
           material.uniforms.uExplosion.value = Math.max(0, 1.0 - t * 1.5);
 
           const reformTarget = targetPositionsRef.current;
           if (reformTarget) {
             const gestureScale = gestureScaleRef.current;
-            const lerpFactor = 0.02 + t * 0.06; // accelerating lerp
+            const lerpFactor = 0.15 + t * 0.25; // VEEL sneller: 10x sterker
 
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
               const scaledTarget = reformTarget[i] * gestureScale;
               const diff = scaledTarget - current[i];
               vel[i] += diff * lerpFactor;
-              vel[i] *= 0.88;
+              vel[i] *= 0.85; // minder damping voor snellere beweging
               current[i] += vel[i];
             }
           }
 
-          if (exp.progress >= 1.2) {
+          if (exp.progress >= 0.8) { // sneller klaar
             exp.active = false;
             exp.phase = 'idle';
             exp.burstVelocities = null;
             exp.pendingTarget = null;
             material.uniforms.uExplosion.value = 0;
             setIsTransitioning(false);
+            console.log('[Cosmos] Transition complete!');
           }
         }
       } else {
