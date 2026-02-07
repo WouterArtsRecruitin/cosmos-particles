@@ -173,9 +173,9 @@ export default function ParticleGestureSystem() {
         const y = current[i3 + 1];
         const z = current[i3 + 2];
         const dist = Math.sqrt(x * x + y * y + z * z) || 0.01;
-        // MEGA EXPLOSIE: deeltjes vliegen HEEL VER weg!
-        const force = 5.0 + Math.random() * 8.0; // was 1.2-3.2, now 5-13!
-        const chaos = (Math.random() - 0.5) * 6.0; // was 1.5, now 6.0!
+        // EXTREME EXPLOSIE: deeltjes vliegen OVER HET SCHERM!!!
+        const force = 50.0 + Math.random() * 100.0; // ENORM: 50-150 (was 5-13)!
+        const chaos = (Math.random() - 0.5) * 30.0; // chaos 30 (was 6.0)!
         burstVel[i3] = (x / dist) * force + chaos;
         burstVel[i3 + 1] = (y / dist) * force + chaos;
         burstVel[i3 + 2] = (z / dist) * force + chaos;
@@ -646,10 +646,10 @@ export default function ParticleGestureSystem() {
           // DIRECT EXPLOSION - geen physics, gewoon VLIEGEN!
           if (exp.burstVelocities) {
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-              // DIRECT toevoegen zonder damping - gewoon ONTPLOFFEN!
-              current[i] += exp.burstVelocities[i] * dt * 100.0; // 100x!!!
+              // EXTREME KRACHT: 500x sneller dan normaal!!!
+              current[i] += exp.burstVelocities[i] * dt * 500.0; // was 100x, now 500x!!!
               // Velocity blijft constant = particles blijven vliegen
-              vel[i] = exp.burstVelocities[i] * 0.95;
+              vel[i] = exp.burstVelocities[i];
             }
           }
 
