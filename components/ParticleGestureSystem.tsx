@@ -643,13 +643,13 @@ export default function ParticleGestureSystem() {
           const t = Math.min(exp.progress, 1.0);
           material.uniforms.uExplosion.value = t;
 
-          // Apply burst velocities - deeltjes vliegen VER weg!
+          // DIRECT EXPLOSION - geen physics, gewoon VLIEGEN!
           if (exp.burstVelocities) {
-            const damping = 1.0 - t * 0.2; // nog minder damping
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-              vel[i] += exp.burstVelocities[i] * dt * 15.0 * damping; // 15x force!
-              vel[i] *= 0.99; // bijna GEEN wrijving
-              current[i] += vel[i];
+              // DIRECT toevoegen zonder damping - gewoon ONTPLOFFEN!
+              current[i] += exp.burstVelocities[i] * dt * 100.0; // 100x!!!
+              // Velocity blijft constant = particles blijven vliegen
+              vel[i] = exp.burstVelocities[i] * 0.95;
             }
           }
 
