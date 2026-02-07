@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 export interface HandLandmark {
   x: number;
@@ -95,8 +95,15 @@ function getHandCenter(landmarks: HandLandmark[]): { x: number; y: number } {
   };
 }
 
-export function useHandGesture(enabled: boolean = true) {
+export interface UseHandGestureReturn {
+  gesture: GestureState;
+  /** Direct ref updated synchronously in MediaPipe callback — use in animation loops to avoid React state delay */
+  dataRef: React.MutableRefObject<GestureState>;
+}
+
+export function useHandGesture(enabled: boolean = true): UseHandGestureReturn {
   const [gesture, setGesture] = useState<GestureState>(DEFAULT_STATE);
+  const dataRef = useRef<GestureState>(DEFAULT_STATE);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const handsRef = useRef<any>(null);
@@ -241,8 +248,8 @@ export function useHandGesture(enabled: boolean = true) {
           const opennessScale = 0.5 + averageOpenness * 0.5; // 0.5 to 1.0
           const rawScale = distanceScale * opennessScale;
 
-          // Smooth values
-          const smooth = 0.15;
+          // Smooth values (light smoothing only — animation loop does its own lerp)
+          const smooth = 0.35;
           const s = smoothedRef.current;
           s.distance = s.distance + (distance - s.distance) * smooth;
           s.leftOpenness = s.leftOpenness + (leftOpenness - s.leftOpenness) * smooth;
@@ -251,7 +258,7 @@ export function useHandGesture(enabled: boolean = true) {
           s.centerX = s.centerX + (centerX - s.centerX) * smooth;
           s.centerY = s.centerY + (centerY - s.centerY) * smooth;
 
-          setGesture({
+          const newState: GestureState = {
             leftHand,
             rightHand,
             handsDetected,
@@ -264,7 +271,12 @@ export function useHandGesture(enabled: boolean = true) {
             centerY: s.centerY,
             isActive: true,
             videoElement: videoRef.current,
-          });
+          };
+
+          // Write directly to ref (synchronous, no React delay)
+          dataRef.current = newState;
+          // Also update React state for UI components
+          setGesture(newState);
         });
 
         handsRef.current = hands;
@@ -314,5 +326,5 @@ export function useHandGesture(enabled: boolean = true) {
     };
   }, [enabled, cleanup]);
 
-  return gesture;
+  return { gesture, dataRef };
 }

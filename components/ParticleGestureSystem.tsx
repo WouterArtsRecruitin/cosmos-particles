@@ -119,24 +119,8 @@ export default function ParticleGestureSystem() {
   const gestureRotYRef = useRef(0);
   const prevHandsRef = useRef(0);
   const transitionModeRef = useRef<TransitionMode>('explode');
-  const gestureRef = useRef({
-    handsDetected: 0, centerX: 0.5, centerY: 0.5,
-    scale: 1.0, openness: 0, distance: 0.5,
-  });
 
-  const gesture = useHandGesture(cameraEnabled);
-
-  // Keep gesture ref in sync for animation loop access (ALL gesture data)
-  useEffect(() => {
-    gestureRef.current = {
-      handsDetected: gesture.handsDetected,
-      centerX: gesture.centerX,
-      centerY: gesture.centerY,
-      scale: gesture.scale,
-      openness: gesture.averageOpenness,
-      distance: gesture.distance,
-    };
-  }, [gesture.handsDetected, gesture.centerX, gesture.centerY, gesture.scale, gesture.averageOpenness, gesture.distance]);
+  const { gesture, dataRef: gestureDataRef } = useHandGesture(cameraEnabled);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -735,20 +719,20 @@ export default function ParticleGestureSystem() {
         trailAlphaAttr.needsUpdate = true;
       }
 
-      // ── Gesture control (read ALL gesture data from ref) ──
-      const g = gestureRef.current;
+      // ── Gesture control (read directly from hook ref — no React state delay) ──
+      const g = gestureDataRef.current;
       if (g.handsDetected > 0) {
-        // 1. Scale: directly read from gesture ref (responsive!)
-        gestureScaleRef.current += (g.scale - gestureScaleRef.current) * 0.12;
+        // Scale: single smooth lerp (hook already does light smoothing)
+        gestureScaleRef.current += (g.scale - gestureScaleRef.current) * 0.18;
 
-        // 2. Rotation: APPLY hand position to particle rotation
+        // Rotation: map hand position to rotation, single smooth lerp
         const targetRotY = (g.centerX - 0.5) * Math.PI * 0.6;
         const targetRotX = (g.centerY - 0.5) * Math.PI * 0.4;
-        gestureRotYRef.current += (targetRotY - gestureRotYRef.current) * 0.06;
-        gestureRotXRef.current += (targetRotX - gestureRotXRef.current) * 0.06;
-        // Actually apply gesture rotation to particles
-        particles.rotation.y += (gestureRotYRef.current - particles.rotation.y) * 0.04;
-        particles.rotation.x += (gestureRotXRef.current - particles.rotation.x) * 0.04;
+        gestureRotYRef.current += (targetRotY - gestureRotYRef.current) * 0.12;
+        gestureRotXRef.current += (targetRotX - gestureRotXRef.current) * 0.12;
+        // Apply to particles
+        particles.rotation.y += (gestureRotYRef.current - particles.rotation.y) * 0.10;
+        particles.rotation.x += (gestureRotXRef.current - particles.rotation.x) * 0.10;
         trailPoints.rotation.y = particles.rotation.y;
         trailPoints.rotation.x = particles.rotation.x;
       } else {
@@ -797,10 +781,9 @@ export default function ParticleGestureSystem() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── React to gesture state changes ──
+  // ── React to gesture state changes (UI updates + pulse triggers only) ──
   useEffect(() => {
     if (!gesture.isActive || gesture.handsDetected === 0) {
-      gestureScaleRef.current += (1.0 - gestureScaleRef.current) * 0.05;
       setGestureInfo('');
 
       // Detect hands leaving → fire pulse
@@ -816,8 +799,6 @@ export default function ParticleGestureSystem() {
       firePulse(1.0);
     }
     prevHandsRef.current = gesture.handsDetected;
-
-    gestureScaleRef.current += (gesture.scale - gestureScaleRef.current) * 0.1;
 
     if (gesture.handsDetected === 2) {
       const pct = Math.round(gesture.distance * 100);
