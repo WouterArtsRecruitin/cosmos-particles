@@ -130,19 +130,13 @@ export default function ParticleGestureSystem() {
   const triggerTransition = useCallback((newTarget: Float32Array) => {
     const current = currentPositionsRef.current;
     const vel = velocitiesRef.current;
-    if (!current || !vel) {
-      console.log('[Cosmos] triggerTransition blocked - refs not ready');
-      return;
-    }
+    if (!current || !vel) return;
 
     const mode = transitionModeRef.current;
     const exp = explosionRef.current;
-    console.log('[Cosmos] triggerTransition starting -', 'mode:', mode, 'exp.active:', exp.active);
-
     if (mode === 'morph') {
       // Simple morph: just set target, spring physics does the rest
       targetPositionsRef.current = newTarget;
-      console.log('[Cosmos] Morph mode - target set');
       return;
     }
 
@@ -156,12 +150,10 @@ export default function ParticleGestureSystem() {
         const y = current[i3 + 1];
         const z = current[i3 + 2];
         const dist = Math.sqrt(x * x + y * y + z * z) || 0.01;
-        // EXTREME EXPLOSIE: deeltjes vliegen OVER HET SCHERM!!!
-        const force = 50.0 + Math.random() * 100.0; // ENORM: 50-150 (was 5-13)!
-        const chaos = (Math.random() - 0.5) * 30.0; // chaos 30 (was 6.0)!
-        burstVel[i3] = (x / dist) * force + chaos;
-        burstVel[i3 + 1] = (y / dist) * force + chaos;
-        burstVel[i3 + 2] = (z / dist) * force + chaos;
+        const force = 2.0 + Math.random() * 4.0;
+        burstVel[i3] = (x / dist) * force + (Math.random() - 0.5) * 2.0;
+        burstVel[i3 + 1] = (y / dist) * force + (Math.random() - 0.5) * 2.0;
+        burstVel[i3 + 2] = (z / dist) * force + (Math.random() - 0.5) * 2.0;
       }
     } else if (mode === 'vortex') {
       for (let i = 0; i < PARTICLE_COUNT; i++) {
@@ -169,11 +161,11 @@ export default function ParticleGestureSystem() {
         const x = current[i3];
         const y = current[i3 + 1];
         const z = current[i3 + 2];
-        // Tangential velocity (spinning outward)
-        const force = 0.2 + Math.random() * 0.3;
-        burstVel[i3] = -z * force + (Math.random() - 0.5) * 0.1;
-        burstVel[i3 + 1] = (Math.random() - 0.5) * 0.2;
-        burstVel[i3 + 2] = x * force + (Math.random() - 0.5) * 0.1;
+        // Tangential spin + outward push
+        const force = 1.5 + Math.random() * 2.5;
+        burstVel[i3] = -z * force * 0.08 + (x / (Math.abs(x) + 0.1)) * 0.5 + (Math.random() - 0.5) * 0.5;
+        burstVel[i3 + 1] = (Math.random() - 0.5) * 1.0;
+        burstVel[i3 + 2] = x * force * 0.08 + (z / (Math.abs(z) + 0.1)) * 0.5 + (Math.random() - 0.5) * 0.5;
       }
     }
 
@@ -638,59 +630,56 @@ export default function ParticleGestureSystem() {
 
       // ── Explosion / transition phases ──
       if (exp.active) {
-        const speed = 0.8; // LANGZAAM zodat je explosie ECHT ziet!
+        const speed = 1.8;
         exp.progress += dt * speed;
 
         if (exp.phase === 'exploding') {
           const t = Math.min(exp.progress, 1.0);
           material.uniforms.uExplosion.value = t;
 
-          // DIRECT EXPLOSION - geen physics, gewoon VLIEGEN!
+          // Apply burst velocities with damping
           if (exp.burstVelocities) {
+            const damping = 1.0 - t * 0.5;
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-              // EXTREME KRACHT: 500x sneller dan normaal!!!
-              current[i] += exp.burstVelocities[i] * dt * 500.0; // was 100x, now 500x!!!
-              // Velocity blijft constant = particles blijven vliegen
-              vel[i] = exp.burstVelocities[i];
+              vel[i] += exp.burstVelocities[i] * dt * 3.0 * damping;
+              vel[i] *= 0.97;
+              current[i] += vel[i];
             }
           }
 
-          if (exp.progress >= 1.5) {
-            // LANG wachten (1.5 / 0.8 = 1.875 seconden explosie!)
+          if (exp.progress >= 0.6) {
             exp.phase = 'reforming';
             exp.progress = 0;
             if (exp.pendingTarget) {
               targetPositionsRef.current = exp.pendingTarget;
             }
-            console.log('[Cosmos] Explosion complete, reforming...');
           }
         } else if (exp.phase === 'reforming') {
-          const t = Math.min(exp.progress / 0.8, 1.0); // kortere reforming fase
+          const t = Math.min(exp.progress / 1.2, 1.0);
           material.uniforms.uExplosion.value = Math.max(0, 1.0 - t * 1.5);
 
           const reformTarget = targetPositionsRef.current;
           if (reformTarget) {
             const gestureScale = gestureScaleRef.current;
             const offsets = [offset.x, offset.y, offset.z];
-            const lerpFactor = 0.15 + t * 0.25; // VEEL sneller: 10x sterker
+            const lerpFactor = 0.02 + t * 0.08;
 
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
               const scaledTarget = reformTarget[i] * gestureScale + offsets[i % 3];
               const diff = scaledTarget - current[i];
               vel[i] += diff * lerpFactor;
-              vel[i] *= 0.85; // minder damping voor snellere beweging
+              vel[i] *= 0.88;
               current[i] += vel[i];
             }
           }
 
-          if (exp.progress >= 0.8) { // sneller klaar
+          if (exp.progress >= 1.2) {
             exp.active = false;
             exp.phase = 'idle';
             exp.burstVelocities = null;
             exp.pendingTarget = null;
             material.uniforms.uExplosion.value = 0;
             setIsTransitioning(false);
-            console.log('[Cosmos] Transition complete!');
           }
         }
       } else {
@@ -963,12 +952,10 @@ export default function ParticleGestureSystem() {
   useEffect(() => {
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false;
-      console.log('[Cosmos] Initial mount - skipping transition');
       return;
     }
-    console.log('[Cosmos] Template changed to:', selectedTemplate, 'Mode:', transitionMode);
     generateTemplate(selectedTemplate, BASE_SCALE);
-  }, [selectedTemplate, generateTemplate, transitionMode]);
+  }, [selectedTemplate, generateTemplate]);
 
   // ── Persist session to localStorage ──
   useEffect(() => {
