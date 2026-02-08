@@ -138,37 +138,39 @@ export default function ParticleGestureSystem() {
     const mode = transitionModeRef.current;
     const exp = explosionRef.current;
     if (mode === 'morph') {
-      // Simple morph: just set target, spring physics does the rest
       targetPositionsRef.current = newTarget;
       return;
     }
 
-    // Create burst velocities
+    // Compute cloud center (from gesture offset) for directional explosion
+    const cx = gestureOffsetRef.current.x;
+    const cy = gestureOffsetRef.current.y;
+    const cz = gestureOffsetRef.current.z;
+
     const burstVel = new Float32Array(PARTICLE_COUNT * 3);
 
     if (mode === 'explode') {
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         const i3 = i * 3;
-        const x = current[i3];
-        const y = current[i3 + 1];
-        const z = current[i3 + 2];
-        const dist = Math.sqrt(x * x + y * y + z * z) || 0.01;
-        const force = 2.0 + Math.random() * 4.0;
-        burstVel[i3] = (x / dist) * force + (Math.random() - 0.5) * 2.0;
-        burstVel[i3 + 1] = (y / dist) * force + (Math.random() - 0.5) * 2.0;
-        burstVel[i3 + 2] = (z / dist) * force + (Math.random() - 0.5) * 2.0;
+        // Direction from cloud center, not from origin
+        const dx = current[i3] - cx;
+        const dy = current[i3 + 1] - cy;
+        const dz = current[i3 + 2] - cz;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.01;
+        const force = 8.0 + Math.random() * 12.0;
+        burstVel[i3] = (dx / dist) * force + (Math.random() - 0.5) * 4.0;
+        burstVel[i3 + 1] = (dy / dist) * force + (Math.random() - 0.5) * 4.0;
+        burstVel[i3 + 2] = (dz / dist) * force + (Math.random() - 0.5) * 4.0;
       }
     } else if (mode === 'vortex') {
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         const i3 = i * 3;
-        const x = current[i3];
-        const y = current[i3 + 1];
-        const z = current[i3 + 2];
-        // Tangential spin + outward push
-        const force = 1.5 + Math.random() * 2.5;
-        burstVel[i3] = -z * force * 0.08 + (x / (Math.abs(x) + 0.1)) * 0.5 + (Math.random() - 0.5) * 0.5;
-        burstVel[i3 + 1] = (Math.random() - 0.5) * 1.0;
-        burstVel[i3 + 2] = x * force * 0.08 + (z / (Math.abs(z) + 0.1)) * 0.5 + (Math.random() - 0.5) * 0.5;
+        const dx = current[i3] - cx;
+        const dz = current[i3 + 2] - cz;
+        const force = 4.0 + Math.random() * 6.0;
+        burstVel[i3] = -dz * force * 0.08 + (dx / (Math.abs(dx) + 0.1)) * 1.5 + (Math.random() - 0.5) * 1.0;
+        burstVel[i3 + 1] = (Math.random() - 0.5) * 2.0;
+        burstVel[i3 + 2] = dx * force * 0.08 + (dz / (Math.abs(dz) + 0.1)) * 1.5 + (Math.random() - 0.5) * 1.0;
       }
     }
 
@@ -648,24 +650,23 @@ export default function ParticleGestureSystem() {
 
       // ── Explosion / transition phases ──
       if (exp.active) {
-        const speed = 1.8;
+        const speed = 2.2;
         exp.progress += dt * speed;
 
         if (exp.phase === 'exploding') {
           const t = Math.min(exp.progress, 1.0);
           material.uniforms.uExplosion.value = t;
 
-          // Apply burst velocities with damping
           if (exp.burstVelocities) {
-            const damping = 1.0 - t * 0.5;
+            const damping = 1.0 - t * 0.3;
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-              vel[i] += exp.burstVelocities[i] * dt * 3.0 * damping;
-              vel[i] *= 0.97;
+              vel[i] += exp.burstVelocities[i] * dt * 8.0 * damping;
+              vel[i] *= 0.96;
               current[i] += vel[i];
             }
           }
 
-          if (exp.progress >= 0.6) {
+          if (exp.progress >= 0.5) {
             exp.phase = 'reforming';
             exp.progress = 0;
             if (exp.pendingTarget) {
@@ -673,25 +674,25 @@ export default function ParticleGestureSystem() {
             }
           }
         } else if (exp.phase === 'reforming') {
-          const t = Math.min(exp.progress / 1.2, 1.0);
-          material.uniforms.uExplosion.value = Math.max(0, 1.0 - t * 1.5);
+          const t = Math.min(exp.progress / 1.0, 1.0);
+          material.uniforms.uExplosion.value = Math.max(0, 1.0 - t * 1.8);
 
           const reformTarget = targetPositionsRef.current;
           if (reformTarget) {
             const gestureScale = gestureScaleRef.current;
             const offsets = [offset.x, offset.y, offset.z];
-            const lerpFactor = 0.02 + t * 0.08;
+            const lerpFactor = 0.04 + t * 0.12;
 
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
               const scaledTarget = reformTarget[i] * gestureScale + offsets[i % 3];
               const diff = scaledTarget - current[i];
               vel[i] += diff * lerpFactor;
-              vel[i] *= 0.88;
+              vel[i] *= 0.86;
               current[i] += vel[i];
             }
           }
 
-          if (exp.progress >= 1.2) {
+          if (exp.progress >= 1.0) {
             exp.active = false;
             exp.phase = 'idle';
             exp.burstVelocities = null;
