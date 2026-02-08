@@ -112,10 +112,13 @@ export default function ParticleGestureSystem() {
   const [captureFlash, setCaptureFlash] = useState(false);
   const [showCameraPreview, setShowCameraPreview] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [tensionLevel, setTensionLevel] = useState(0);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const gestureScaleRef = useRef(1.0);
   const gestureOffsetRef = useRef({ x: 0, y: 0, z: 0 });
+  const gestureTensionRef = useRef(0);
+  const prevTensionRef = useRef(0);
   const prevHandsRef = useRef(0);
   const transitionModeRef = useRef<TransitionMode>('explode');
 
@@ -130,50 +133,44 @@ export default function ParticleGestureSystem() {
   const triggerTransition = useCallback((newTarget: Float32Array) => {
     const current = currentPositionsRef.current;
     const vel = velocitiesRef.current;
-    if (!current || !vel) {
-      console.log('[Cosmos] triggerTransition blocked - refs not ready');
-      return;
-    }
+    if (!current || !vel) return;
 
     const mode = transitionModeRef.current;
     const exp = explosionRef.current;
-    console.log('[Cosmos] triggerTransition starting -', 'mode:', mode, 'exp.active:', exp.active);
-
     if (mode === 'morph') {
-      // Simple morph: just set target, spring physics does the rest
       targetPositionsRef.current = newTarget;
-      console.log('[Cosmos] Morph mode - target set');
       return;
     }
 
-    // Create burst velocities
+    // Compute cloud center (from gesture offset) for directional explosion
+    const cx = gestureOffsetRef.current.x;
+    const cy = gestureOffsetRef.current.y;
+    const cz = gestureOffsetRef.current.z;
+
     const burstVel = new Float32Array(PARTICLE_COUNT * 3);
 
     if (mode === 'explode') {
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         const i3 = i * 3;
-        const x = current[i3];
-        const y = current[i3 + 1];
-        const z = current[i3 + 2];
-        const dist = Math.sqrt(x * x + y * y + z * z) || 0.01;
-        // EXTREME EXPLOSIE: deeltjes vliegen OVER HET SCHERM!!!
-        const force = 50.0 + Math.random() * 100.0; // ENORM: 50-150 (was 5-13)!
-        const chaos = (Math.random() - 0.5) * 30.0; // chaos 30 (was 6.0)!
-        burstVel[i3] = (x / dist) * force + chaos;
-        burstVel[i3 + 1] = (y / dist) * force + chaos;
-        burstVel[i3 + 2] = (z / dist) * force + chaos;
+        // Direction from cloud center, not from origin
+        const dx = current[i3] - cx;
+        const dy = current[i3 + 1] - cy;
+        const dz = current[i3 + 2] - cz;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.01;
+        const force = 8.0 + Math.random() * 12.0;
+        burstVel[i3] = (dx / dist) * force + (Math.random() - 0.5) * 4.0;
+        burstVel[i3 + 1] = (dy / dist) * force + (Math.random() - 0.5) * 4.0;
+        burstVel[i3 + 2] = (dz / dist) * force + (Math.random() - 0.5) * 4.0;
       }
     } else if (mode === 'vortex') {
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         const i3 = i * 3;
-        const x = current[i3];
-        const y = current[i3 + 1];
-        const z = current[i3 + 2];
-        // Tangential velocity (spinning outward)
-        const force = 0.2 + Math.random() * 0.3;
-        burstVel[i3] = -z * force + (Math.random() - 0.5) * 0.1;
-        burstVel[i3 + 1] = (Math.random() - 0.5) * 0.2;
-        burstVel[i3 + 2] = x * force + (Math.random() - 0.5) * 0.1;
+        const dx = current[i3] - cx;
+        const dz = current[i3 + 2] - cz;
+        const force = 4.0 + Math.random() * 6.0;
+        burstVel[i3] = -dz * force * 0.08 + (dx / (Math.abs(dx) + 0.1)) * 1.5 + (Math.random() - 0.5) * 1.0;
+        burstVel[i3 + 1] = (Math.random() - 0.5) * 2.0;
+        burstVel[i3 + 2] = dx * force * 0.08 + (dz / (Math.abs(dz) + 0.1)) * 1.5 + (Math.random() - 0.5) * 1.0;
       }
     }
 
@@ -617,20 +614,35 @@ export default function ParticleGestureSystem() {
         }
       }
 
-      // ── Gesture: update offset + scale (before physics so offset is available) ──
+      // ── Gesture: update offset, scale, tension (before physics) ──
       const g = gestureDataRef.current;
       const offset = gestureOffsetRef.current;
       if (g.handsDetected > 0) {
-        gestureScaleRef.current += (g.scale - gestureScaleRef.current) * 0.18;
+        // Tension-based scale: open hand = expand (1.5), fist = contract (0.4)
+        const tensionScale = 1.5 - g.tension * 1.1; // 1.5 (open) → 0.4 (fist)
+        const targetScale = tensionScale * (0.5 + g.distance * 0.8); // distance modulates
+        gestureScaleRef.current += (targetScale - gestureScaleRef.current) * 0.15;
 
+        // Smooth tension for animation
+        gestureTensionRef.current += (g.tension - gestureTensionRef.current) * 0.2;
+
+        // Clap detection: tension spikes from < 0.3 to > 0.75 → fire pulse
+        if (prevTensionRef.current < 0.3 && g.tension > 0.75) {
+          firePulse(1.2);
+        }
+        prevTensionRef.current = g.tension;
+
+        // Position: follow hand
         const handWorldX = (0.5 - g.centerX) * 50;
         const handWorldY = (0.5 - g.centerY) * 35;
-        const followSpeed = 0.06 + g.averageOpenness * 0.08;
+        const followSpeed = 0.06 + (1 - g.tension) * 0.08; // open = faster follow
         offset.x += (handWorldX - offset.x) * followSpeed;
         offset.y += (handWorldY - offset.y) * followSpeed;
         offset.z *= 0.95;
       } else {
         gestureScaleRef.current += (1.0 - gestureScaleRef.current) * 0.04;
+        gestureTensionRef.current *= 0.95;
+        prevTensionRef.current = 0;
         offset.x *= 0.96;
         offset.y *= 0.96;
         offset.z *= 0.96;
@@ -638,59 +650,55 @@ export default function ParticleGestureSystem() {
 
       // ── Explosion / transition phases ──
       if (exp.active) {
-        const speed = 0.8; // LANGZAAM zodat je explosie ECHT ziet!
+        const speed = 2.2;
         exp.progress += dt * speed;
 
         if (exp.phase === 'exploding') {
           const t = Math.min(exp.progress, 1.0);
           material.uniforms.uExplosion.value = t;
 
-          // DIRECT EXPLOSION - geen physics, gewoon VLIEGEN!
           if (exp.burstVelocities) {
+            const damping = 1.0 - t * 0.3;
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
-              // EXTREME KRACHT: 500x sneller dan normaal!!!
-              current[i] += exp.burstVelocities[i] * dt * 500.0; // was 100x, now 500x!!!
-              // Velocity blijft constant = particles blijven vliegen
-              vel[i] = exp.burstVelocities[i];
+              vel[i] += exp.burstVelocities[i] * dt * 8.0 * damping;
+              vel[i] *= 0.96;
+              current[i] += vel[i];
             }
           }
 
-          if (exp.progress >= 1.5) {
-            // LANG wachten (1.5 / 0.8 = 1.875 seconden explosie!)
+          if (exp.progress >= 0.5) {
             exp.phase = 'reforming';
             exp.progress = 0;
             if (exp.pendingTarget) {
               targetPositionsRef.current = exp.pendingTarget;
             }
-            console.log('[Cosmos] Explosion complete, reforming...');
           }
         } else if (exp.phase === 'reforming') {
-          const t = Math.min(exp.progress / 0.8, 1.0); // kortere reforming fase
-          material.uniforms.uExplosion.value = Math.max(0, 1.0 - t * 1.5);
+          const t = Math.min(exp.progress / 1.0, 1.0);
+          material.uniforms.uExplosion.value = Math.max(0, 1.0 - t * 1.8);
 
           const reformTarget = targetPositionsRef.current;
           if (reformTarget) {
             const gestureScale = gestureScaleRef.current;
             const offsets = [offset.x, offset.y, offset.z];
-            const lerpFactor = 0.15 + t * 0.25; // VEEL sneller: 10x sterker
+            const lerpFactor = 0.04 + t * 0.12;
 
             for (let i = 0; i < PARTICLE_COUNT * 3; i++) {
               const scaledTarget = reformTarget[i] * gestureScale + offsets[i % 3];
               const diff = scaledTarget - current[i];
               vel[i] += diff * lerpFactor;
-              vel[i] *= 0.85; // minder damping voor snellere beweging
+              vel[i] *= 0.86;
               current[i] += vel[i];
             }
           }
 
-          if (exp.progress >= 0.8) { // sneller klaar
+          if (exp.progress >= 1.0) {
             exp.active = false;
             exp.phase = 'idle';
             exp.burstVelocities = null;
             exp.pendingTarget = null;
             material.uniforms.uExplosion.value = 0;
             setIsTransitioning(false);
-            console.log('[Cosmos] Transition complete!');
           }
         }
       } else {
@@ -795,6 +803,7 @@ export default function ParticleGestureSystem() {
   useEffect(() => {
     if (!gesture.isActive || gesture.handsDetected === 0) {
       setGestureInfo('');
+      setTensionLevel(0);
 
       // Detect hands leaving → fire pulse
       if (prevHandsRef.current > 0 && gesture.handsDetected === 0) {
@@ -810,14 +819,16 @@ export default function ParticleGestureSystem() {
     }
     prevHandsRef.current = gesture.handsDetected;
 
+    // Update tension for UI
+    setTensionLevel(gesture.tension);
+
+    const tensionLabel = gesture.tension < 0.3 ? 'Laag' : gesture.tension < 0.65 ? 'Midden' : 'Hoog';
     if (gesture.handsDetected === 2) {
       const pct = Math.round(gesture.distance * 100);
-      const openPct = Math.round(gesture.averageOpenness * 100);
-      setGestureInfo(`Handen: ${pct}% afstand \u2022 ${openPct}% open`);
+      setGestureInfo(`Handen: ${pct}% afstand \u2022 Spanning: ${tensionLabel}`);
     } else {
       const hand = gesture.leftHand ? 'Links' : 'Rechts';
-      const openPct = Math.round((gesture.leftHand ? gesture.leftOpenness : gesture.rightOpenness) * 100);
-      setGestureInfo(`${hand}: ${openPct}% open`);
+      setGestureInfo(`${hand} \u2022 Spanning: ${tensionLabel}`);
     }
   }, [gesture, firePulse]);
 
@@ -963,12 +974,10 @@ export default function ParticleGestureSystem() {
   useEffect(() => {
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false;
-      console.log('[Cosmos] Initial mount - skipping transition');
       return;
     }
-    console.log('[Cosmos] Template changed to:', selectedTemplate, 'Mode:', transitionMode);
     generateTemplate(selectedTemplate, BASE_SCALE);
-  }, [selectedTemplate, generateTemplate, transitionMode]);
+  }, [selectedTemplate, generateTemplate]);
 
   // ── Persist session to localStorage ──
   useEffect(() => {
@@ -1140,7 +1149,7 @@ export default function ParticleGestureSystem() {
           </div>
           </div>
 
-          {/* Gesture info */}
+          {/* Gesture info + Tension bar */}
           {cameraEnabled && (
             <div className="sm:bg-black/40 sm:backdrop-blur-2xl border-0 sm:border border-white/10 rounded-xl p-0 sm:p-4">
               <h3 className="text-white/70 text-xs font-medium uppercase tracking-wider mb-2">Gebaar Detectie</h3>
@@ -1153,24 +1162,38 @@ export default function ParticleGestureSystem() {
                 <div className="text-xs text-white/40 mb-2">
                   {gesture.handsDetected} hand{gesture.handsDetected > 1 ? 'en' : ''} gedetecteerd
                 </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[10px] text-white/40">
-                    <span>Schaal</span>
-                    <span>{Math.round(gestureScaleRef.current * 100)}%</span>
+                {/* Tension bar */}
+                <div className="space-y-1.5 mb-2">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-white/40 uppercase tracking-wider">Spanning</span>
+                    <span className={`font-medium ${
+                      tensionLevel < 0.3 ? 'text-emerald-400' : tensionLevel < 0.65 ? 'text-amber-400' : 'text-red-400'
+                    }`}>
+                      {tensionLevel < 0.3 ? 'Laag' : tensionLevel < 0.65 ? 'Midden' : 'Hoog'}
+                    </span>
                   </div>
-                  <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-200"
-                      style={{ width: `${Math.min(100, gestureScaleRef.current * 50)}%` }}
+                      className="h-full rounded-full transition-all duration-150"
+                      style={{
+                        width: `${Math.round(tensionLevel * 100)}%`,
+                        background: tensionLevel < 0.3
+                          ? 'linear-gradient(to right, #10b981, #34d399)'
+                          : tensionLevel < 0.65
+                          ? 'linear-gradient(to right, #f59e0b, #fbbf24)'
+                          : 'linear-gradient(to right, #ef4444, #f87171)',
+                      }}
                     />
                   </div>
                 </div>
+                <p className="text-[10px] text-white/25 leading-relaxed">
+                  Open hand = uitzetten {'\u2022'} Vuist = samentrekken
+                </p>
               </>
             )}
             {gesture.handsDetected === 0 && gesture.isActive && (
               <p className="text-[10px] text-white/30 leading-relaxed">
-                Beweeg je handen voor de camera. Spreid je handen om de deeltjes te vergroten.
-                Sluit je vuisten om ze samen te trekken.
+                Beweeg je handen voor de camera. Open hand om uit te zetten, vuist om samen te trekken.
               </p>
             )}
             </div>

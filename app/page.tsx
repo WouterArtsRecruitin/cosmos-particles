@@ -2,15 +2,11 @@
 
 import dynamic from 'next/dynamic';
 
-const ParticleGestureSystem = dynamic(
-  () => import('@/components/ParticleGestureSystem'),
+const ZenParticles = dynamic(
+  () => import('@/components/ZenParticles'),
   { ssr: false }
 );
 
 export default function Home() {
-  return (
-    <div className="m-0 p-0 w-screen h-screen overflow-hidden">
-      <ParticleGestureSystem />
-    </div>
-  );
+  return <ZenParticles />;
 }
