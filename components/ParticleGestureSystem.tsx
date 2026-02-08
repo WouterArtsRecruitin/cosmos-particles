@@ -112,10 +112,13 @@ export default function ParticleGestureSystem() {
   const [captureFlash, setCaptureFlash] = useState(false);
   const [showCameraPreview, setShowCameraPreview] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [tensionLevel, setTensionLevel] = useState(0);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const gestureScaleRef = useRef(1.0);
   const gestureOffsetRef = useRef({ x: 0, y: 0, z: 0 });
+  const gestureTensionRef = useRef(0);
+  const prevTensionRef = useRef(0);
   const prevHandsRef = useRef(0);
   const transitionModeRef = useRef<TransitionMode>('explode');
 
@@ -609,20 +612,35 @@ export default function ParticleGestureSystem() {
         }
       }
 
-      // ── Gesture: update offset + scale (before physics so offset is available) ──
+      // ── Gesture: update offset, scale, tension (before physics) ──
       const g = gestureDataRef.current;
       const offset = gestureOffsetRef.current;
       if (g.handsDetected > 0) {
-        gestureScaleRef.current += (g.scale - gestureScaleRef.current) * 0.18;
+        // Tension-based scale: open hand = expand (1.5), fist = contract (0.4)
+        const tensionScale = 1.5 - g.tension * 1.1; // 1.5 (open) → 0.4 (fist)
+        const targetScale = tensionScale * (0.5 + g.distance * 0.8); // distance modulates
+        gestureScaleRef.current += (targetScale - gestureScaleRef.current) * 0.15;
 
+        // Smooth tension for animation
+        gestureTensionRef.current += (g.tension - gestureTensionRef.current) * 0.2;
+
+        // Clap detection: tension spikes from < 0.3 to > 0.75 → fire pulse
+        if (prevTensionRef.current < 0.3 && g.tension > 0.75) {
+          firePulse(1.2);
+        }
+        prevTensionRef.current = g.tension;
+
+        // Position: follow hand
         const handWorldX = (0.5 - g.centerX) * 50;
         const handWorldY = (0.5 - g.centerY) * 35;
-        const followSpeed = 0.06 + g.averageOpenness * 0.08;
+        const followSpeed = 0.06 + (1 - g.tension) * 0.08; // open = faster follow
         offset.x += (handWorldX - offset.x) * followSpeed;
         offset.y += (handWorldY - offset.y) * followSpeed;
         offset.z *= 0.95;
       } else {
         gestureScaleRef.current += (1.0 - gestureScaleRef.current) * 0.04;
+        gestureTensionRef.current *= 0.95;
+        prevTensionRef.current = 0;
         offset.x *= 0.96;
         offset.y *= 0.96;
         offset.z *= 0.96;
@@ -784,6 +802,7 @@ export default function ParticleGestureSystem() {
   useEffect(() => {
     if (!gesture.isActive || gesture.handsDetected === 0) {
       setGestureInfo('');
+      setTensionLevel(0);
 
       // Detect hands leaving → fire pulse
       if (prevHandsRef.current > 0 && gesture.handsDetected === 0) {
@@ -799,14 +818,16 @@ export default function ParticleGestureSystem() {
     }
     prevHandsRef.current = gesture.handsDetected;
 
+    // Update tension for UI
+    setTensionLevel(gesture.tension);
+
+    const tensionLabel = gesture.tension < 0.3 ? 'Laag' : gesture.tension < 0.65 ? 'Midden' : 'Hoog';
     if (gesture.handsDetected === 2) {
       const pct = Math.round(gesture.distance * 100);
-      const openPct = Math.round(gesture.averageOpenness * 100);
-      setGestureInfo(`Handen: ${pct}% afstand \u2022 ${openPct}% open`);
+      setGestureInfo(`Handen: ${pct}% afstand \u2022 Spanning: ${tensionLabel}`);
     } else {
       const hand = gesture.leftHand ? 'Links' : 'Rechts';
-      const openPct = Math.round((gesture.leftHand ? gesture.leftOpenness : gesture.rightOpenness) * 100);
-      setGestureInfo(`${hand}: ${openPct}% open`);
+      setGestureInfo(`${hand} \u2022 Spanning: ${tensionLabel}`);
     }
   }, [gesture, firePulse]);
 
@@ -1127,7 +1148,7 @@ export default function ParticleGestureSystem() {
           </div>
           </div>
 
-          {/* Gesture info */}
+          {/* Gesture info + Tension bar */}
           {cameraEnabled && (
             <div className="sm:bg-black/40 sm:backdrop-blur-2xl border-0 sm:border border-white/10 rounded-xl p-0 sm:p-4">
               <h3 className="text-white/70 text-xs font-medium uppercase tracking-wider mb-2">Gebaar Detectie</h3>
@@ -1140,24 +1161,38 @@ export default function ParticleGestureSystem() {
                 <div className="text-xs text-white/40 mb-2">
                   {gesture.handsDetected} hand{gesture.handsDetected > 1 ? 'en' : ''} gedetecteerd
                 </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[10px] text-white/40">
-                    <span>Schaal</span>
-                    <span>{Math.round(gestureScaleRef.current * 100)}%</span>
+                {/* Tension bar */}
+                <div className="space-y-1.5 mb-2">
+                  <div className="flex items-center justify-between text-[10px]">
+                    <span className="text-white/40 uppercase tracking-wider">Spanning</span>
+                    <span className={`font-medium ${
+                      tensionLevel < 0.3 ? 'text-emerald-400' : tensionLevel < 0.65 ? 'text-amber-400' : 'text-red-400'
+                    }`}>
+                      {tensionLevel < 0.3 ? 'Laag' : tensionLevel < 0.65 ? 'Midden' : 'Hoog'}
+                    </span>
                   </div>
-                  <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-200"
-                      style={{ width: `${Math.min(100, gestureScaleRef.current * 50)}%` }}
+                      className="h-full rounded-full transition-all duration-150"
+                      style={{
+                        width: `${Math.round(tensionLevel * 100)}%`,
+                        background: tensionLevel < 0.3
+                          ? 'linear-gradient(to right, #10b981, #34d399)'
+                          : tensionLevel < 0.65
+                          ? 'linear-gradient(to right, #f59e0b, #fbbf24)'
+                          : 'linear-gradient(to right, #ef4444, #f87171)',
+                      }}
                     />
                   </div>
                 </div>
+                <p className="text-[10px] text-white/25 leading-relaxed">
+                  Open hand = uitzetten {'\u2022'} Vuist = samentrekken
+                </p>
               </>
             )}
             {gesture.handsDetected === 0 && gesture.isActive && (
               <p className="text-[10px] text-white/30 leading-relaxed">
-                Beweeg je handen voor de camera. Spreid je handen om de deeltjes te vergroten.
-                Sluit je vuisten om ze samen te trekken.
+                Beweeg je handen voor de camera. Open hand om uit te zetten, vuist om samen te trekken.
               </p>
             )}
             </div>

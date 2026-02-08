@@ -16,6 +16,7 @@ export interface GestureState {
   leftOpenness: number;    // 0 = closed fist, 1 = fully open
   rightOpenness: number;
   averageOpenness: number;
+  tension: number;         // 0 = open hand, 1 = closed fist (inverse of openness)
   scale: number;           // combined scale factor from distance + openness
   centerX: number;         // center point between hands (normalized 0-1)
   centerY: number;
@@ -31,6 +32,7 @@ const DEFAULT_STATE: GestureState = {
   leftOpenness: 0,
   rightOpenness: 0,
   averageOpenness: 0,
+  tension: 0,
   scale: 1,
   centerX: 0.5,
   centerY: 0.5,
@@ -258,6 +260,9 @@ export function useHandGesture(enabled: boolean = true): UseHandGestureReturn {
           s.centerX = s.centerX + (centerX - s.centerX) * smooth;
           s.centerY = s.centerY + (centerY - s.centerY) * smooth;
 
+          // Tension: 0 = open hand, 1 = closed fist (inverted openness)
+          const tension = Math.max(0, Math.min(1, 1 - averageOpenness));
+
           const newState: GestureState = {
             leftHand,
             rightHand,
@@ -266,6 +271,7 @@ export function useHandGesture(enabled: boolean = true): UseHandGestureReturn {
             leftOpenness: s.leftOpenness,
             rightOpenness: s.rightOpenness,
             averageOpenness,
+            tension,
             scale: s.scale,
             centerX: s.centerX,
             centerY: s.centerY,
