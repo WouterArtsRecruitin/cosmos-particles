@@ -11,7 +11,7 @@ function generateSphere(count: number): Float32Array {
   for (let i = 0; i < count; i++) {
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
-    const r = Math.pow(Math.random(), 0.33) * 5;
+    const r = Math.pow(Math.random(), 0.33) * 10;
     positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
     positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
     positions[i * 3 + 2] = r * Math.cos(phi);
@@ -30,9 +30,9 @@ function generateHeart(count: number): Float32Array {
     const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
     const z = (Math.random() - 0.5) * 8 * Math.sin(s);
 
-    positions[i * 3]     = jitter(x * 0.3 * r, 0.5);
-    positions[i * 3 + 1] = jitter(y * 0.3 * r, 0.5);
-    positions[i * 3 + 2] = jitter(z * 0.3 * r, 0.5);
+    positions[i * 3]     = jitter(x * 0.55 * r, 0.8);
+    positions[i * 3 + 1] = jitter(y * 0.55 * r, 0.8);
+    positions[i * 3 + 2] = jitter(z * 0.55 * r, 0.8);
   }
   return positions;
 }
@@ -45,7 +45,7 @@ function generateFlower(count: number): Float32Array {
   for (let i = 0; i < count; i++) {
     // Phyllotaxis arrangement
     const theta = i * goldenAngle;
-    const r = Math.sqrt(i / count) * 5;
+    const r = Math.sqrt(i / count) * 10;
     const height = (Math.random() - 0.5) * 2;
 
     positions[i * 3]     = r * Math.cos(theta) + jitter(0, 0.3);
@@ -63,7 +63,7 @@ function generateSaturn(count: number): Float32Array {
   for (let i = 0; i < planetCount; i++) {
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(2 * Math.random() - 1);
-    const r = Math.pow(Math.random(), 0.33) * 2.5;
+    const r = Math.pow(Math.random(), 0.33) * 5;
     positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
     positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta) * 0.9;
     positions[i * 3 + 2] = r * Math.cos(phi);
@@ -72,7 +72,7 @@ function generateSaturn(count: number): Float32Array {
   // Ring disk
   for (let i = planetCount; i < count; i++) {
     const theta = Math.random() * Math.PI * 2;
-    const r = 3.5 + Math.random() * 3;
+    const r = 6 + Math.random() * 5;
     positions[i * 3]     = r * Math.cos(theta);
     positions[i * 3 + 1] = jitter(0, 0.15);
     positions[i * 3 + 2] = r * Math.sin(theta);
@@ -82,7 +82,7 @@ function generateSaturn(count: number): Float32Array {
 
 function generateBuddha(count: number): Float32Array {
   const positions = new Float32Array(count * 3);
-  const scale = 5;
+  const scale = 9;
 
   for (let i = 0; i < count; i++) {
     const section = Math.random();
@@ -156,10 +156,10 @@ function generateFireworks(count: number): Float32Array {
   const perBurst = Math.floor(count / burstCount);
 
   for (let b = 0; b < burstCount; b++) {
-    const cx = (Math.random() - 0.5) * 8;
-    const cy = (Math.random() - 0.3) * 6;
-    const cz = (Math.random() - 0.5) * 4;
-    const burstRadius = 2 + Math.random() * 3;
+    const cx = (Math.random() - 0.5) * 14;
+    const cy = (Math.random() - 0.3) * 10;
+    const cz = (Math.random() - 0.5) * 8;
+    const burstRadius = 4 + Math.random() * 5;
 
     for (let i = 0; i < perBurst; i++) {
       const idx = b * perBurst + i;
