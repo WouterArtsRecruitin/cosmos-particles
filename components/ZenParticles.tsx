@@ -104,7 +104,7 @@ export default function ZenParticles() {
 
       {/* Three.js Canvas */}
       <Canvas
-        camera={{ position: [0, 0, 20], fov: 60 }}
+        camera={{ position: [0, 0, 30], fov: 60 }}
         gl={{ antialias: true, alpha: true }}
         style={{ position: 'absolute', top: 0, left: 0 }}
       >
@@ -122,8 +122,8 @@ export default function ZenParticles() {
           enableRotate={true}
           autoRotate
           autoRotateSpeed={0.5}
-          minDistance={5}
-          maxDistance={50}
+          minDistance={10}
+          maxDistance={80}
         />
       </Canvas>
 

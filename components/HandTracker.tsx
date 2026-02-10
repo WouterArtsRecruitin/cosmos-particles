@@ -9,21 +9,21 @@ interface HandTrackerProps {
 
 // Hand skeleton connections for drawing overlay
 const HAND_CONNECTIONS: [number, number][] = [
-  [0, 1], [1, 2], [2, 3], [3, 4],       // Thumb
-  [0, 5], [5, 6], [6, 7], [7, 8],       // Index
-  [5, 9], [9, 10], [10, 11], [11, 12],  // Middle
-  [9, 13], [13, 14], [14, 15], [15, 16],// Ring
-  [13, 17], [17, 18], [18, 19], [19, 20],// Pinky
-  [0, 17],                                // Palm base
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [5, 9], [9, 10], [10, 11], [11, 12],
+  [9, 13], [13, 14], [14, 15], [15, 16],
+  [13, 17], [17, 18], [18, 19], [19, 20],
+  [0, 17],
 ];
 
-// Fingertip indices get bright colors
+// Fingertip colors
 const FINGERTIP_COLORS: Record<number, string> = {
-  4: '#00ffff',   // Thumb - cyan
-  8: '#ff00ff',   // Index - magenta
-  12: '#ffff00',  // Middle - yellow
-  16: '#00ff80',  // Ring - green
-  20: '#ff4444',  // Pinky - red
+  4: '#00ffff',
+  8: '#ff00ff',
+  12: '#ffff00',
+  16: '#00ff80',
+  20: '#ff4444',
 };
 
 export default function HandTracker({ onUpdate }: HandTrackerProps) {
@@ -34,7 +34,10 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
   const handLandmarkerRef = useRef<any>(null);
   const animFrameRef = useRef<number>(0);
   const streamRef = useRef<MediaStream | null>(null);
-  const landmarksRef = useRef<any[][]>([]);
+
+  // Use refs for the callback so the detection loop always has the latest version
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
 
   const smoothedRef = useRef({
     tension: 0,
@@ -42,15 +45,11 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
     centerY: 0.5,
   });
 
-  const calculateTension = useCallback((landmarks: any[]): number => {
-    // landmarks is array of 21 hand landmarks
-    // Fingertip indices: 4 (thumb), 8 (index), 12 (middle), 16 (ring), 20 (pinky)
-    // Wrist: 0
+  function calculateTension(landmarks: any[]): number {
     const wrist = landmarks[0];
     const fingerTips = [4, 8, 12, 16, 20];
     const fingerBases = [2, 5, 9, 13, 17];
 
-    // Palm size = distance from wrist to middle finger MCP
     const middleMcp = landmarks[9];
     const palmSize = Math.sqrt(
       (middleMcp.x - wrist.x) ** 2 +
@@ -71,21 +70,133 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
         (base.x - wrist.x) ** 2 + (base.y - wrist.y) ** 2 + (base.z - wrist.z) ** 2
       );
       const ratio = baseDist > 0 ? tipDist / baseDist : 0;
-      const openness = Math.max(0, Math.min(1, (ratio - 1.0) / 1.2));
+      const openness = Math.max(0, Math.min(1, (ratio - 1.0) / 1.0));
       totalOpenness += openness;
     }
 
     const avgOpenness = totalOpenness / fingerTips.length;
-    // Tension = inverted openness: closed fist = 1.0, open hand = 0.0
     return Math.max(0, Math.min(1, 1 - avgOpenness));
-  }, []);
+  }
+
+  function drawLandmarks(allLandmarks: any[][]) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    if (allLandmarks.length === 0) return;
+
+    for (const lm of allLandmarks) {
+      // Draw connections
+      ctx.lineWidth = 3;
+      for (const [a, b] of HAND_CONNECTIONS) {
+        const pa = lm[a];
+        const pb = lm[b];
+        if (!pa || !pb) continue;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.beginPath();
+        ctx.moveTo(pa.x * w, pa.y * h);
+        ctx.lineTo(pb.x * w, pb.y * h);
+        ctx.stroke();
+      }
+
+      // Draw dots
+      for (let i = 0; i < lm.length; i++) {
+        const pt = lm[i];
+        if (!pt) continue;
+        const color = FINGERTIP_COLORS[i];
+        const isTip = !!color;
+        const dotColor = color || '#ffffff';
+        const radius = isTip ? 10 : 6;
+
+        // Glow for fingertips
+        if (isTip) {
+          ctx.beginPath();
+          ctx.arc(pt.x * w, pt.y * h, radius + 4, 0, Math.PI * 2);
+          ctx.fillStyle = dotColor.replace(')', ', 0.3)').replace('rgb', 'rgba').replace('#', '');
+          // Simpler glow: just a larger semi-transparent circle
+          ctx.globalAlpha = 0.35;
+          ctx.fillStyle = dotColor;
+          ctx.fill();
+          ctx.globalAlpha = 1.0;
+        }
+
+        ctx.beginPath();
+        ctx.arc(pt.x * w, pt.y * h, radius, 0, Math.PI * 2);
+        ctx.fillStyle = dotColor;
+        ctx.fill();
+
+        // White border
+        ctx.beginPath();
+        ctx.arc(pt.x * w, pt.y * h, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+  }
+
+  function processResults(landmarks: any[][], _handedness: any[]) {
+    drawLandmarks(landmarks);
+
+    const handsDetected = landmarks.length;
+
+    if (handsDetected === 0) {
+      const s = smoothedRef.current;
+      s.tension = s.tension * 0.92;
+      s.centerX = s.centerX + (0.5 - s.centerX) * 0.05;
+      s.centerY = s.centerY + (0.5 - s.centerY) * 0.05;
+
+      onUpdateRef.current({
+        tension: s.tension,
+        handsDetected: 0,
+        centerX: s.centerX,
+        centerY: s.centerY,
+      });
+      return;
+    }
+
+    let totalTension = 0;
+    let totalX = 0;
+    let totalY = 0;
+
+    for (let i = 0; i < landmarks.length; i++) {
+      const lm = landmarks[i];
+      totalTension += calculateTension(lm);
+      const wrist = lm[0];
+      const middleMcp = lm[9];
+      totalX += (wrist.x + middleMcp.x) / 2;
+      totalY += (wrist.y + middleMcp.y) / 2;
+    }
+
+    const tension = totalTension / handsDetected;
+    const centerX = totalX / handsDetected;
+    const centerY = totalY / handsDetected;
+
+    // Fast smoothing for responsive feel
+    const smooth = 0.55;
+    const s = smoothedRef.current;
+    s.tension = s.tension + (tension - s.tension) * smooth;
+    s.centerX = s.centerX + (centerX - s.centerX) * smooth;
+    s.centerY = s.centerY + (centerY - s.centerY) * smooth;
+
+    onUpdateRef.current({
+      tension: s.tension,
+      handsDetected,
+      centerX: s.centerX,
+      centerY: s.centerY,
+    });
+  }
 
   const startTracking = useCallback(async () => {
     try {
       setError(null);
       setLoading(true);
 
-      // Use the older @mediapipe/hands if tasks-vision is not available
       let useTasksVision = false;
       try {
         const tasksVision = await import('@mediapipe/tasks-vision');
@@ -118,8 +229,8 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
           },
           runningMode: 'VIDEO',
           numHands: 2,
-          minHandDetectionConfidence: 0.6,
-          minTrackingConfidence: 0.5,
+          minHandDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.4,
         });
 
         handLandmarkerRef.current = handLandmarker;
@@ -143,7 +254,6 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
 
         animFrameRef.current = requestAnimationFrame(detect);
       } else {
-        // Fallback to @mediapipe/hands
         const { Hands } = await import('@mediapipe/hands');
         const { Camera } = await import('@mediapipe/camera_utils');
 
@@ -155,8 +265,8 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
         hands.setOptions({
           maxNumHands: 2,
           modelComplexity: 1,
-          minDetectionConfidence: 0.6,
-          minTrackingConfidence: 0.5,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.4,
         });
 
         hands.onResults((results: any) => {
@@ -187,113 +297,6 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
     }
   }, []);
 
-  const drawLandmarks = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const w = canvas.width;
-    const h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-
-    const allLandmarks = landmarksRef.current;
-    if (allLandmarks.length === 0) return;
-
-    for (const lm of allLandmarks) {
-      // Draw connections
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.lineWidth = 1.5;
-      for (const [a, b] of HAND_CONNECTIONS) {
-        const pa = lm[a];
-        const pb = lm[b];
-        if (!pa || !pb) continue;
-        ctx.beginPath();
-        ctx.moveTo(pa.x * w, pa.y * h);
-        ctx.lineTo(pb.x * w, pb.y * h);
-        ctx.stroke();
-      }
-
-      // Draw dots
-      for (let i = 0; i < lm.length; i++) {
-        const pt = lm[i];
-        if (!pt) continue;
-        const isTip = i in FINGERTIP_COLORS;
-        const color = FINGERTIP_COLORS[i] || '#ffffff';
-        const radius = isTip ? 4 : 2.5;
-
-        ctx.beginPath();
-        ctx.arc(pt.x * w, pt.y * h, radius, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
-
-        if (isTip) {
-          ctx.beginPath();
-          ctx.arc(pt.x * w, pt.y * h, radius + 2, 0, Math.PI * 2);
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-      }
-    }
-  }, []);
-
-  const processResults = useCallback((landmarks: any[][], handedness: any[]) => {
-    landmarksRef.current = landmarks;
-    drawLandmarks();
-
-    const handsDetected = landmarks.length;
-
-    if (handsDetected === 0) {
-      // Smoothly decay to default
-      const s = smoothedRef.current;
-      s.tension = s.tension * 0.95;
-      s.centerX = s.centerX + (0.5 - s.centerX) * 0.05;
-      s.centerY = s.centerY + (0.5 - s.centerY) * 0.05;
-
-      onUpdate({
-        tension: s.tension,
-        handsDetected: 0,
-        centerX: s.centerX,
-        centerY: s.centerY,
-      });
-      return;
-    }
-
-    let totalTension = 0;
-    let totalX = 0;
-    let totalY = 0;
-
-    for (let i = 0; i < landmarks.length; i++) {
-      const lm = landmarks[i];
-      totalTension += calculateTension(lm);
-
-      // Center point from wrist and middle MCP
-      const wrist = lm[0];
-      const middleMcp = lm[9];
-      totalX += (wrist.x + middleMcp.x) / 2;
-      totalY += (wrist.y + middleMcp.y) / 2;
-    }
-
-    const tension = totalTension / handsDetected;
-    const centerX = totalX / handsDetected;
-    const centerY = totalY / handsDetected;
-
-    // Smooth values
-    const smooth = 0.35;
-    const s = smoothedRef.current;
-    s.tension  = s.tension  + (tension  - s.tension)  * smooth;
-    s.centerX  = s.centerX  + (centerX  - s.centerX)  * smooth;
-    s.centerY  = s.centerY  + (centerY  - s.centerY)  * smooth;
-
-    onUpdate({
-      tension: s.tension,
-      handsDetected,
-      centerX: s.centerX,
-      centerY: s.centerY,
-    });
-  }, [calculateTension, onUpdate, drawLandmarks]);
-
   useEffect(() => {
     startTracking();
 
@@ -314,11 +317,10 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
 
   return (
     <div className="fixed top-4 right-4 z-50">
-      {/* Camera preview */}
-      <div className="relative w-40 h-30 rounded-xl overflow-hidden border border-white/20 bg-black/40 backdrop-blur-md shadow-lg">
+      <div className="relative w-48 h-36 rounded-xl overflow-hidden border-2 border-white/30 bg-black/50 backdrop-blur-md shadow-2xl">
         <video
           ref={videoRef}
-          className="w-full h-full object-cover mirror"
+          className="w-full h-full object-cover"
           playsInline
           muted
           style={{ transform: 'scaleX(-1)' }}
@@ -327,18 +329,18 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
           ref={canvasRef}
           width={640}
           height={480}
-          className="absolute inset-0 w-full h-full"
-          style={{ transform: 'scaleX(-1)' }}
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          style={{ transform: 'scaleX(-1)', zIndex: 10 }}
         />
 
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60" style={{ zIndex: 20 }}>
             <div className="text-white/70 text-xs">Loading camera...</div>
           </div>
         )}
 
         {error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-2">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-2" style={{ zIndex: 20 }}>
             <div className="text-red-400 text-xs mb-2 text-center">{error}</div>
             <button
               onClick={() => startTracking()}
