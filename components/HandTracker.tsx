@@ -7,13 +7,34 @@ interface HandTrackerProps {
   onUpdate: (stats: HandStats) => void;
 }
 
+// Hand skeleton connections for drawing overlay
+const HAND_CONNECTIONS: [number, number][] = [
+  [0, 1], [1, 2], [2, 3], [3, 4],       // Thumb
+  [0, 5], [5, 6], [6, 7], [7, 8],       // Index
+  [5, 9], [9, 10], [10, 11], [11, 12],  // Middle
+  [9, 13], [13, 14], [14, 15], [15, 16],// Ring
+  [13, 17], [17, 18], [18, 19], [19, 20],// Pinky
+  [0, 17],                                // Palm base
+];
+
+// Fingertip indices get bright colors
+const FINGERTIP_COLORS: Record<number, string> = {
+  4: '#00ffff',   // Thumb - cyan
+  8: '#ff00ff',   // Index - magenta
+  12: '#ffff00',  // Middle - yellow
+  16: '#00ff80',  // Ring - green
+  20: '#ff4444',  // Pinky - red
+};
+
 export default function HandTracker({ onUpdate }: HandTrackerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const handLandmarkerRef = useRef<any>(null);
   const animFrameRef = useRef<number>(0);
   const streamRef = useRef<MediaStream | null>(null);
+  const landmarksRef = useRef<any[][]>([]);
 
   const smoothedRef = useRef({
     tension: 0,
@@ -166,7 +187,61 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
     }
   }, []);
 
+  const drawLandmarks = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const allLandmarks = landmarksRef.current;
+    if (allLandmarks.length === 0) return;
+
+    for (const lm of allLandmarks) {
+      // Draw connections
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 1.5;
+      for (const [a, b] of HAND_CONNECTIONS) {
+        const pa = lm[a];
+        const pb = lm[b];
+        if (!pa || !pb) continue;
+        ctx.beginPath();
+        ctx.moveTo(pa.x * w, pa.y * h);
+        ctx.lineTo(pb.x * w, pb.y * h);
+        ctx.stroke();
+      }
+
+      // Draw dots
+      for (let i = 0; i < lm.length; i++) {
+        const pt = lm[i];
+        if (!pt) continue;
+        const isTip = i in FINGERTIP_COLORS;
+        const color = FINGERTIP_COLORS[i] || '#ffffff';
+        const radius = isTip ? 4 : 2.5;
+
+        ctx.beginPath();
+        ctx.arc(pt.x * w, pt.y * h, radius, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+
+        if (isTip) {
+          ctx.beginPath();
+          ctx.arc(pt.x * w, pt.y * h, radius + 2, 0, Math.PI * 2);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      }
+    }
+  }, []);
+
   const processResults = useCallback((landmarks: any[][], handedness: any[]) => {
+    landmarksRef.current = landmarks;
+    drawLandmarks();
+
     const handsDetected = landmarks.length;
 
     if (handsDetected === 0) {
@@ -217,7 +292,7 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
       centerX: s.centerX,
       centerY: s.centerY,
     });
-  }, [calculateTension, onUpdate]);
+  }, [calculateTension, onUpdate, drawLandmarks]);
 
   useEffect(() => {
     startTracking();
@@ -246,6 +321,13 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
           className="w-full h-full object-cover mirror"
           playsInline
           muted
+          style={{ transform: 'scaleX(-1)' }}
+        />
+        <canvas
+          ref={canvasRef}
+          width={640}
+          height={480}
+          className="absolute inset-0 w-full h-full"
           style={{ transform: 'scaleX(-1)' }}
         />
 
