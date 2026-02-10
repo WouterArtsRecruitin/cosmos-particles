@@ -144,9 +144,9 @@ void main() {
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
   // Point size: varies with scale, depth, and trail
-  float baseSize = pScale * (3.0 + uTension * 2.0);
+  float baseSize = pScale * (1.5 + uTension * 1.0);
   float trailFade = 1.0 - trailLag * 0.6;
-  gl_PointSize = baseSize * trailFade * (300.0 / -mvPosition.z);
+  gl_PointSize = baseSize * trailFade * (200.0 / -mvPosition.z);
 
   gl_Position = projectionMatrix * mvPosition;
 
@@ -213,7 +213,7 @@ export default function ParticleSystem({
 
     for (let i = 0; i < particleCount; i++) {
       const randVal = Math.random();
-      const scaleVal = 0.5 + Math.random();
+      const scaleVal = 0.2 + Math.random() * 0.6;
       for (let t = 0; t < TRAIL_LENGTH; t++) {
         const idx = i * TRAIL_LENGTH + t;
         rand[idx] = randVal;

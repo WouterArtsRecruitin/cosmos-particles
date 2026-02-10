@@ -9,7 +9,7 @@ import Controls from './Controls';
 import { ShapeType, HandStats } from '../types';
 
 const SESSION_KEY = 'zen-particles-session';
-const PARTICLE_COUNT = 8000;
+const PARTICLE_COUNT = 55000;
 
 interface SavedSession {
   shape: ShapeType;
