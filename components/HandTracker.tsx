@@ -177,8 +177,8 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
     const centerX = totalX / handsDetected;
     const centerY = totalY / handsDetected;
 
-    // Fast smoothing for responsive feel
-    const smooth = 0.55;
+    // Near-instant response
+    const smooth = 0.7;
     const s = smoothedRef.current;
     s.tension = s.tension + (tension - s.tension) * smooth;
     s.centerX = s.centerX + (centerX - s.centerX) * smooth;

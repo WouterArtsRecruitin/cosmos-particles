@@ -110,49 +110,60 @@ void main() {
   pos = mix(pos, position, trailLag * 0.3);
 
   // Breathing effect - strong cosmic pulse
-  float breathe = sin(uTime * 0.6 + randomness * 6.28) * 0.25;
+  float breathe = sin(uTime * 0.5 + randomness * 6.28) * 0.3;
 
-  // Simplex noise turbulence - more dramatic
-  float noiseScale = 0.3 + uTension * 0.8;
-  vec3 noisePos = pos * 0.2 + vec3(uTime * 0.15);
+  // Simplex noise turbulence - dramatic
+  float noiseScale = 0.4 + uTension * 1.2;
+  vec3 noisePos = pos * 0.15 + vec3(uTime * 0.12);
   float nx = snoise(noisePos) * noiseScale;
   float ny = snoise(noisePos + vec3(100.0)) * noiseScale;
   float nz = snoise(noisePos + vec3(200.0)) * noiseScale;
 
-  // Visual tension controls expansion/contraction - much more dramatic range
+  // Visual tension controls expansion/contraction - extreme range
   // uTension = 1 means expanded (open hand), uTension = 0 means contracted (fist)
-  float scaleFactor = 0.5 + uTension * 2.0; // 0.5 to 2.5
+  float scaleFactor = 0.15 + uTension * 3.0; // 0.15 (tiny ball) to 3.15 (huge cosmos)
   pos *= scaleFactor;
 
-  // Add noise displacement
-  pos += vec3(nx, ny, nz);
+  // Add noise displacement (scales with tension for more chaos when expanded)
+  pos += vec3(nx, ny, nz) * (0.5 + uTension * 1.5);
 
-  // Breathing
-  pos *= 1.0 + breathe * (0.5 + uTension * 0.5);
+  // Breathing scales with expansion
+  pos *= 1.0 + breathe * (0.3 + uTension * 0.7);
 
-  // Gravity pull when relaxed (low tension = contracted = more gravity)
-  float gravity = (1.0 - uTension) * 0.4;
+  // Gravity pull when contracted (fist pulls particles down)
+  float gravity = (1.0 - uTension) * 0.8;
   pos.y -= gravity;
 
-  // Explosion: blast outward - even more powerful
+  // Swirl effect that intensifies with tension
+  float swirlAngle = uTime * 0.3 * uTension;
+  float cosA = cos(swirlAngle * 0.1);
+  float sinA = sin(swirlAngle * 0.1);
+  vec3 swirlPos = vec3(
+    pos.x * cosA - pos.z * sinA,
+    pos.y,
+    pos.x * sinA + pos.z * cosA
+  );
+  pos = mix(pos, swirlPos, uTension * 0.3);
+
+  // Explosion: blast outward - massive
   if (uExplosion > 0.01) {
     vec3 dir = normalize(pos + vec3(0.001));
     float dist = length(pos);
-    pos += dir * uExplosion * (12.0 + randomness * 18.0) * (1.0 + dist * 0.3);
+    pos += dir * uExplosion * (15.0 + randomness * 25.0) * (1.0 + dist * 0.4);
   }
 
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
-  // Point size: larger for cosmic look
-  float baseSize = pScale * (2.5 + uTension * 2.0);
+  // Point size: dramatic range
+  float baseSize = pScale * (3.0 + uTension * 3.0);
   float trailFade = 1.0 - trailLag * 0.6;
-  gl_PointSize = baseSize * trailFade * (300.0 / -mvPosition.z);
+  gl_PointSize = baseSize * trailFade * (350.0 / -mvPosition.z);
 
   gl_Position = projectionMatrix * mvPosition;
 
-  // Pass to fragment
+  // Pass to fragment - brighter when expanded
   vTrailIdx = trailIdx;
-  vAlpha = trailFade * (0.7 + uTension * 0.3);
+  vAlpha = trailFade * (0.5 + uTension * 0.5);
   vColor = uColor;
 }
 `;
