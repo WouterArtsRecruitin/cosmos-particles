@@ -32,8 +32,8 @@ export default function ZenParticles() {
   const [explosion, setExplosion] = useState(0);
 
   const explosionDecayRef = useRef<number>(0);
+  const tensionRef = useRef(0); // current tension for the decay loop
   // Tracks the lowest recent tension (open hand state)
-  // Follows tension downward instantly, drifts upward slowly
   const recentLowRef = useRef(1);
   const explosionCooldownRef = useRef(0);
 
@@ -44,6 +44,7 @@ export default function ZenParticles() {
 
   const handleHandUpdate = useCallback((stats: HandStats) => {
     setTension(stats.tension);
+    tensionRef.current = stats.tension;
 
     const t = stats.tension;
     const low = recentLowRef.current;
@@ -68,17 +69,24 @@ export default function ZenParticles() {
     ) {
       setExplosion(1.0);
       explosionDecayRef.current = 1.0;
-      recentLowRef.current = t; // reset so it doesn't re-trigger
-      explosionCooldownRef.current = 30; // ~0.5s cooldown at 60fps
+      recentLowRef.current = t;
+      explosionCooldownRef.current = 30;
     }
   }, []);
 
-  // Explosion decay
+  // Explosion decay: hand-responsive
+  // Fist closed (high tension) → slow decay, particles stay scattered
+  // Hand opening (low tension) → fast decay, particles pull back
   useEffect(() => {
     let frame: number;
     const decay = () => {
       if (explosionDecayRef.current > 0.01) {
-        explosionDecayRef.current *= 0.95;
+        // openness = how open the hand is (0 = fist, 1 = open)
+        const openness = 1 - tensionRef.current;
+        // Fist: decay 0.98 (slow, stays exploded)
+        // Open: decay 0.88 (fast, pulls back)
+        const rate = 0.98 - openness * 0.10;
+        explosionDecayRef.current *= rate;
         setExplosion(explosionDecayRef.current);
       } else if (explosionDecayRef.current > 0) {
         explosionDecayRef.current = 0;

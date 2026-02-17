@@ -145,33 +145,42 @@ void main() {
   );
   pos = mix(pos, swirlPos, uTension * 0.3);
 
-  // Explosion: full cluster blast
+  // Explosion: real blast — particles fly everywhere
   if (uExplosion > 0.01) {
+    float power = uExplosion * uExplosion;
+
+    // Radial outward force
     vec3 dir = normalize(pos + vec3(0.001));
     float dist = length(pos);
-    float power = uExplosion * uExplosion; // ease-in for punchy start
-    pos += dir * power * (25.0 + randomness * 40.0) * (1.0 + dist * 0.5);
-    // Add random scatter for chaotic explosion
+    pos += dir * power * (50.0 + randomness * 80.0) * (1.0 + dist * 0.6);
+
+    // Random scatter: each particle gets a unique chaotic direction
+    vec3 scatterSeed = pos * 0.3 + vec3(randomness * 100.0);
     pos += vec3(
-      snoise(pos * 0.5 + uTime) * power * 8.0,
-      snoise(pos * 0.5 + uTime + 50.0) * power * 8.0,
-      snoise(pos * 0.5 + uTime + 100.0) * power * 8.0
+      snoise(scatterSeed) * power * 30.0,
+      snoise(scatterSeed + vec3(37.0)) * power * 30.0,
+      snoise(scatterSeed + vec3(71.0)) * power * 30.0
     );
+
+    // Extra upward burst for some particles (like debris flying up)
+    pos.y += power * randomness * 20.0;
   }
 
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
-  // Point size: dramatic range
-  float baseSize = pScale * (3.0 + uTension * 3.0);
+  // Point size: dramatic range, flash bigger during explosion
+  float explosionSize = 1.0 + uExplosion * 3.0;
+  float baseSize = pScale * (3.0 + uTension * 3.0) * explosionSize;
   float trailFade = 1.0 - trailLag * 0.6;
   gl_PointSize = baseSize * trailFade * (350.0 / -mvPosition.z);
 
   gl_Position = projectionMatrix * mvPosition;
 
-  // Pass to fragment - brighter when expanded
+  // Pass to fragment - brighter when expanded, flash white during explosion
   vTrailIdx = trailIdx;
-  vAlpha = trailFade * (0.5 + uTension * 0.5);
-  vColor = particleColor;
+  float explosionBright = min(1.0, uExplosion * 2.0);
+  vAlpha = trailFade * (0.5 + uTension * 0.5 + explosionBright * 0.5);
+  vColor = mix(particleColor, vec3(1.0), explosionBright * 0.6);
 }
 `;
 
