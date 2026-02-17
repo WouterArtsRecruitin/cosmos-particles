@@ -5,13 +5,12 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ShapeType } from '../types';
 import { generateGeometry, TRAIL_LENGTH } from '../utils/geometryFactory';
-import type { ShaderValues } from './ZenParticles';
+import { shaderState } from '../utils/shaderState';
 
 interface ParticleSystemProps {
   shape: ShapeType;
-  colors: [number, number, number][];  // array of [r,g,b] normalized
+  colors: [number, number, number][];
   particleCount: number;
-  shaderValues: React.RefObject<ShaderValues>;
 }
 
 // Simplex noise GLSL implementation (Ashima Arts)
@@ -84,6 +83,7 @@ float snoise(vec3 v) {
 `;
 
 const vertexShader = `
+precision highp float;
 ${SIMPLEX_NOISE_GLSL}
 
 attribute vec3 targetPos;
@@ -185,6 +185,7 @@ void main() {
 `;
 
 const fragmentShader = `
+precision mediump float;
 varying float vTrailIdx;
 varying float vAlpha;
 varying vec3 vColor;
@@ -216,7 +217,6 @@ export default function ParticleSystem({
   shape,
   colors,
   particleCount,
-  shaderValues,
 }: ParticleSystemProps) {
   const pointsRef = useRef<THREE.Points>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
@@ -279,7 +279,7 @@ export default function ParticleSystem({
     }
   }, [shape, particleCount]);
 
-  // Animation loop
+  // Animation loop — reads directly from module-level shaderState
   useFrame((state) => {
     if (!materialRef.current) return;
 
@@ -290,11 +290,10 @@ export default function ParticleSystem({
       morphRef.current = Math.min(1.0, morphRef.current + 0.02);
     }
 
-    // Read directly from mutable ref — bypasses React render cycle
-    const sv = shaderValues.current;
+    // Read from module-level state — zero React involvement
     materialRef.current.uniforms.uTime.value = t;
-    materialRef.current.uniforms.uTension.value = sv ? sv.tension : 0.5;
-    materialRef.current.uniforms.uExplosion.value = sv ? sv.explosion : 0;
+    materialRef.current.uniforms.uTension.value = shaderState.tension;
+    materialRef.current.uniforms.uExplosion.value = shaderState.explosion;
     materialRef.current.uniforms.uMorph.value = morphRef.current;
   });
 
