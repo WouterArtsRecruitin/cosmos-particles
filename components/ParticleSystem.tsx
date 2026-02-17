@@ -119,23 +119,29 @@ void main() {
   float ny = snoise(noisePos + vec3(100.0)) * noiseScale;
   float nz = snoise(noisePos + vec3(200.0)) * noiseScale;
 
-  // Visual tension controls expansion/contraction - extreme range
-  // uTension = 1 means expanded (open hand), uTension = 0 means contracted (fist)
-  float scaleFactor = 0.15 + uTension * 3.0; // 0.15 (tiny ball) to 3.15 (huge cosmos)
+  // During explosion, override tension so particles stay expanded
+  // This prevents the "implosion" look — particles explode from full size
+  float effectiveTension = uTension;
+  if (uExplosion > 0.01) {
+    effectiveTension = max(effectiveTension, uExplosion);
+  }
+
+  // Visual tension controls expansion/contraction
+  float scaleFactor = 0.15 + effectiveTension * 3.0;
   pos *= scaleFactor;
 
-  // Add noise displacement (scales with tension for more chaos when expanded)
-  pos += vec3(nx, ny, nz) * (0.5 + uTension * 1.5);
+  // Add noise displacement
+  pos += vec3(nx, ny, nz) * (0.5 + effectiveTension * 1.5);
 
   // Breathing scales with expansion
-  pos *= 1.0 + breathe * (0.3 + uTension * 0.7);
+  pos *= 1.0 + breathe * (0.3 + effectiveTension * 0.7);
 
-  // Gravity pull when contracted (fist pulls particles down)
-  float gravity = (1.0 - uTension) * 0.8;
+  // Gravity pull when contracted (only when NOT exploding)
+  float gravity = (1.0 - effectiveTension) * 0.8;
   pos.y -= gravity;
 
-  // Swirl effect that intensifies with tension
-  float swirlAngle = uTime * 0.3 * uTension;
+  // Swirl effect
+  float swirlAngle = uTime * 0.3 * effectiveTension;
   float cosA = cos(swirlAngle * 0.1);
   float sinA = sin(swirlAngle * 0.1);
   vec3 swirlPos = vec3(
@@ -143,13 +149,13 @@ void main() {
     pos.y,
     pos.x * sinA + pos.z * cosA
   );
-  pos = mix(pos, swirlPos, uTension * 0.3);
+  pos = mix(pos, swirlPos, effectiveTension * 0.3);
 
-  // Explosion: real blast — particles fly everywhere
+  // Explosion: real outward blast from full-size positions
   if (uExplosion > 0.01) {
     float power = uExplosion * uExplosion;
 
-    // Radial outward force
+    // Radial outward force — positions are full-size so this truly explodes
     vec3 dir = normalize(pos + vec3(0.001));
     float dist = length(pos);
     pos += dir * power * (50.0 + randomness * 80.0) * (1.0 + dist * 0.6);
@@ -162,24 +168,24 @@ void main() {
       snoise(scatterSeed + vec3(71.0)) * power * 30.0
     );
 
-    // Extra upward burst for some particles (like debris flying up)
+    // Extra upward burst for some particles
     pos.y += power * randomness * 20.0;
   }
 
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
-  // Point size: dramatic range, flash bigger during explosion
+  // Point size: use effectiveTension so particles stay big during explosion
   float explosionSize = 1.0 + uExplosion * 3.0;
-  float baseSize = pScale * (3.0 + uTension * 3.0) * explosionSize;
+  float baseSize = pScale * (3.0 + effectiveTension * 3.0) * explosionSize;
   float trailFade = 1.0 - trailLag * 0.6;
   gl_PointSize = baseSize * trailFade * (350.0 / -mvPosition.z);
 
   gl_Position = projectionMatrix * mvPosition;
 
-  // Pass to fragment - brighter when expanded, flash white during explosion
+  // Brighter during explosion, use effectiveTension for alpha
   vTrailIdx = trailIdx;
   float explosionBright = min(1.0, uExplosion * 2.0);
-  vAlpha = trailFade * (0.5 + uTension * 0.5 + explosionBright * 0.5);
+  vAlpha = trailFade * (0.5 + effectiveTension * 0.5 + explosionBright * 0.5);
   vColor = mix(particleColor, vec3(1.0), explosionBright * 0.6);
 }
 `;
