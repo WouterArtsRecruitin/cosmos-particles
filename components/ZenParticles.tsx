@@ -7,24 +7,25 @@ import ParticleSystem from './ParticleSystem';
 import HandTracker from './HandTracker';
 import { HandStats } from '../types';
 import { shaderState } from '../utils/shaderState';
-import * as THREE from 'three';
 
-// Cosmic color palette: hot blue stars, white dwarfs, sun-like yellow,
-// red giants, nebula purple/cyan — each as normalized [r,g,b]
+// Realistic 15-type stellar classification colors (normalized RGB)
 const PALETTE: [number, number, number][] = [
-  '#9BB0FF', // hot blue-white
-  '#AABFFF', // blue-white
-  '#FFFFFF', // white dwarf
-  '#FFD700', // sun gold
-  '#FFCC6F', // warm yellow
-  '#FF8C42', // orange giant
-  '#FF4444', // red giant
-  '#B388FF', // nebula purple
-  '#00E5FF', // nebula cyan
-].map(hex => {
-  const c = new THREE.Color(hex);
-  return [c.r, c.g, c.b] as [number, number, number];
-});
+  [0.62, 0.73, 0.95],  // O-class blue giant
+  [0.55, 0.68, 0.92],  // B-class bright blue
+  [0.58, 0.62, 0.72],  // faint blue (old star)
+  [0.70, 0.72, 0.75],  // neutral gray
+  [0.92, 0.89, 0.75],  // warm white (A-class)
+  [0.88, 0.87, 0.78],  // F-class main sequence
+  [0.96, 0.91, 0.68],  // G-class pale yellow (sun-like)
+  [0.85, 0.78, 0.58],  // dim yellow
+  [0.82, 0.68, 0.52],  // faded orange
+  [0.92, 0.78, 0.58],  // K-class pale orange
+  [0.95, 0.72, 0.45],  // deep orange
+  [0.98, 0.65, 0.35],  // amber giant
+  [0.92, 0.52, 0.38],  // M-class red dwarf
+  [0.85, 0.45, 0.35],  // deep red
+  [0.78, 0.38, 0.32],  // dark red (coolest stars)
+];
 
 function isMobile(): boolean {
   if (typeof window === 'undefined') return false;
