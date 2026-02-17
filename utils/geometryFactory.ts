@@ -19,6 +19,68 @@ function generateSphere(count: number): Float32Array {
   return positions;
 }
 
+function generateCluster(count: number): Float32Array {
+  const positions = new Float32Array(count * 3);
+
+  // Sub-clusters: center position + radius + particle share
+  const clusters = [
+    { x: 0, y: 0, z: 0, r: 4, weight: 0.30 },           // dense core
+    { x: 7, y: 3, z: -2, r: 3, weight: 0.12 },           // satellite 1
+    { x: -6, y: -4, z: 3, r: 2.5, weight: 0.10 },        // satellite 2
+    { x: -3, y: 5, z: -6, r: 2, weight: 0.08 },          // satellite 3
+    { x: 5, y: -5, z: 5, r: 2, weight: 0.08 },           // satellite 4
+    { x: -8, y: 2, z: -4, r: 1.5, weight: 0.05 },        // small cluster
+  ];
+  const filamentShare = 0.12;
+  const fieldShare = 0.15;
+
+  let idx = 0;
+
+  // Generate clustered particles
+  for (const cl of clusters) {
+    const n = Math.floor(count * cl.weight);
+    for (let i = 0; i < n && idx < count; i++, idx++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      // Concentrated toward center (power distribution)
+      const r = Math.pow(Math.random(), 0.6) * cl.r;
+      positions[idx * 3]     = cl.x + r * Math.sin(phi) * Math.cos(theta);
+      positions[idx * 3 + 1] = cl.y + r * Math.sin(phi) * Math.sin(theta);
+      positions[idx * 3 + 2] = cl.z + r * Math.cos(phi);
+    }
+  }
+
+  // Filaments connecting clusters (cosmic web strands)
+  const filamentCount = Math.floor(count * filamentShare);
+  const filamentPairs = [
+    [clusters[0], clusters[1]],
+    [clusters[0], clusters[2]],
+    [clusters[0], clusters[3]],
+    [clusters[1], clusters[4]],
+    [clusters[2], clusters[5]],
+  ];
+  for (let i = 0; i < filamentCount && idx < count; i++, idx++) {
+    const pair = filamentPairs[i % filamentPairs.length];
+    const t = Math.random();
+    const spread = 0.8 + Math.random() * 0.6;
+    positions[idx * 3]     = pair[0].x + (pair[1].x - pair[0].x) * t + (Math.random() - 0.5) * spread;
+    positions[idx * 3 + 1] = pair[0].y + (pair[1].y - pair[0].y) * t + (Math.random() - 0.5) * spread;
+    positions[idx * 3 + 2] = pair[0].z + (pair[1].z - pair[0].z) * t + (Math.random() - 0.5) * spread;
+  }
+
+  // Scattered field particles (background stars)
+  for (; idx < count; idx++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const r = 3 + Math.random() * 15;
+    positions[idx * 3]     = r * Math.sin(phi) * Math.cos(theta);
+    positions[idx * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+    positions[idx * 3 + 2] = r * Math.cos(phi);
+  }
+
+  return positions;
+}
+
 function generateHeart(count: number): Float32Array {
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
@@ -196,6 +258,7 @@ export function generateGeometry(type: ShapeType, count: number): Float32Array {
     case 'saturn':    base = generateSaturn(count); break;
     case 'buddha':    base = generateBuddha(count); break;
     case 'fireworks': base = generateFireworks(count); break;
+    case 'cluster':   base = generateCluster(count); break;
     default:          base = generateSphere(count); break;
   }
 

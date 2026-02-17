@@ -8,7 +8,7 @@ import { generateGeometry, TRAIL_LENGTH } from '../utils/geometryFactory';
 
 interface ParticleSystemProps {
   shape: ShapeType;
-  color: string;
+  colors: [number, number, number][];  // array of [r,g,b] normalized
   particleCount: number;
   tension: number;      // visual tension: 0 = contracted, 1 = expanded
   explosion: number;    // 0-1 explosion intensity
@@ -90,12 +90,12 @@ attribute vec3 targetPos;
 attribute float randomness;
 attribute float pScale;
 attribute float trailIdx;
+attribute vec3 particleColor;
 
 uniform float uTime;
 uniform float uTension;      // visual tension: 0 = contracted, 1 = expanded
 uniform float uExplosion;
 uniform float uMorph;        // 0-1 morph progress to new shape
-uniform vec3 uColor;
 
 varying float vTrailIdx;
 varying float vAlpha;
@@ -164,7 +164,7 @@ void main() {
   // Pass to fragment - brighter when expanded
   vTrailIdx = trailIdx;
   vAlpha = trailFade * (0.5 + uTension * 0.5);
-  vColor = uColor;
+  vColor = particleColor;
 }
 `;
 
@@ -198,7 +198,7 @@ void main() {
 
 export default function ParticleSystem({
   shape,
-  color,
+  colors,
   particleCount,
   tension,
   explosion,
@@ -208,28 +208,35 @@ export default function ParticleSystem({
   const prevShapeRef = useRef<ShapeType>(shape);
   const morphRef = useRef(1.0);
 
-  const colorVec = useMemo(() => {
-    const c = new THREE.Color(color);
-    return new THREE.Vector3(c.r, c.g, c.b);
-  }, [color]);
-
   // Generate initial geometry with attributes
-  const { positions, targetPositions, randomness, pScale, trailIdx } = useMemo(() => {
+  const { positions, targetPositions, randomness, pScale, trailIdx, particleColors } = useMemo(() => {
     const totalVerts = particleCount * TRAIL_LENGTH;
     const pos = generateGeometry(shape, particleCount);
     const target = new Float32Array(pos);
     const rand = new Float32Array(totalVerts);
     const scale = new Float32Array(totalVerts);
     const trail = new Float32Array(totalVerts);
+    const pColors = new Float32Array(totalVerts * 3);
 
     for (let i = 0; i < particleCount; i++) {
       const randVal = Math.random();
-      const scaleVal = 0.2 + Math.random() * 0.6;
+      // More dramatic size variation: tiny background stars to bright large ones
+      const sizeRoll = Math.random();
+      const scaleVal = sizeRoll < 0.6 ? 0.1 + Math.random() * 0.3
+                     : sizeRoll < 0.9 ? 0.3 + Math.random() * 0.5
+                     : 0.6 + Math.random() * 0.8;
+
+      // Pick a random color from the palette
+      const col = colors[Math.floor(Math.random() * colors.length)];
+
       for (let t = 0; t < TRAIL_LENGTH; t++) {
         const idx = i * TRAIL_LENGTH + t;
         rand[idx] = randVal;
         scale[idx] = scaleVal;
         trail[idx] = t;
+        pColors[idx * 3]     = col[0];
+        pColors[idx * 3 + 1] = col[1];
+        pColors[idx * 3 + 2] = col[2];
       }
     }
 
@@ -239,8 +246,9 @@ export default function ParticleSystem({
       randomness: rand,
       pScale: scale,
       trailIdx: trail,
+      particleColors: pColors,
     };
-  }, [particleCount]);
+  }, [particleCount, colors]);
 
   // Handle shape changes: update target positions and trigger morph
   useEffect(() => {
@@ -271,7 +279,6 @@ export default function ParticleSystem({
     materialRef.current.uniforms.uTension.value = tension;
     materialRef.current.uniforms.uExplosion.value = explosion;
     materialRef.current.uniforms.uMorph.value = morphRef.current;
-    materialRef.current.uniforms.uColor.value = colorVec;
   });
 
   const totalVerts = particleCount * TRAIL_LENGTH;
@@ -299,6 +306,10 @@ export default function ParticleSystem({
           attach="attributes-trailIdx"
           args={[trailIdx, 1]}
         />
+        <bufferAttribute
+          attach="attributes-particleColor"
+          args={[particleColors, 3]}
+        />
       </bufferGeometry>
       <shaderMaterial
         ref={materialRef}
@@ -312,7 +323,6 @@ export default function ParticleSystem({
           uTension: { value: 0.5 },
           uExplosion: { value: 0 },
           uMorph: { value: 1.0 },
-          uColor: { value: colorVec },
         }}
       />
     </points>

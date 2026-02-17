@@ -6,9 +6,26 @@ import { OrbitControls } from '@react-three/drei';
 import ParticleSystem from './ParticleSystem';
 import HandTracker from './HandTracker';
 import { HandStats } from '../types';
+import * as THREE from 'three';
 
 const PARTICLE_COUNT = 55000;
-const COLOR = '#FFD700';
+
+// Cosmic color palette: hot blue stars, white dwarfs, sun-like yellow,
+// red giants, nebula purple/cyan — each as normalized [r,g,b]
+const PALETTE: [number, number, number][] = [
+  '#9BB0FF', // hot blue-white
+  '#AABFFF', // blue-white
+  '#FFFFFF', // white dwarf
+  '#FFD700', // sun gold
+  '#FFCC6F', // warm yellow
+  '#FF8C42', // orange giant
+  '#FF4444', // red giant
+  '#B388FF', // nebula purple
+  '#00E5FF', // nebula cyan
+].map(hex => {
+  const c = new THREE.Color(hex);
+  return [c.r, c.g, c.b] as [number, number, number];
+});
 
 export default function ZenParticles() {
   const [tension, setTension] = useState(0);
@@ -61,8 +78,8 @@ export default function ZenParticles() {
       >
         <ambientLight intensity={0.3} />
         <ParticleSystem
-          shape="sphere"
-          color={COLOR}
+          shape="cluster"
+          colors={PALETTE}
           particleCount={PARTICLE_COUNT}
           tension={visualTension}
           explosion={explosion}

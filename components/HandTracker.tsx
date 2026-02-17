@@ -70,12 +70,16 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
         (base.x - wrist.x) ** 2 + (base.y - wrist.y) ** 2 + (base.z - wrist.z) ** 2
       );
       const ratio = baseDist > 0 ? tipDist / baseDist : 0;
-      const openness = Math.max(0, Math.min(1, (ratio - 1.0) / 1.0));
+      // More sensitive: lower threshold (0.8) and shorter range (0.7)
+      // so even slightly open fingers register, and full extension saturates
+      const openness = Math.max(0, Math.min(1, (ratio - 0.8) / 0.7));
       totalOpenness += openness;
     }
 
     const avgOpenness = totalOpenness / fingerTips.length;
-    return Math.max(0, Math.min(1, 1 - avgOpenness));
+    // Apply power curve to amplify mid-range movements
+    const curved = Math.pow(avgOpenness, 0.7);
+    return Math.max(0, Math.min(1, 1 - curved));
   }
 
   function drawLandmarks(allLandmarks: any[][]) {
@@ -178,7 +182,7 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
     const centerY = totalY / handsDetected;
 
     // Near-instant response
-    const smooth = 0.7;
+    const smooth = 0.85;
     const s = smoothedRef.current;
     s.tension = s.tension + (tension - s.tension) * smooth;
     s.centerX = s.centerX + (centerX - s.centerX) * smooth;

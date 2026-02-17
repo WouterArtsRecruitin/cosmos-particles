@@ -1,6 +1,6 @@
 'use client';
 
-export type ShapeType = 'sphere' | 'heart' | 'flower' | 'saturn' | 'buddha' | 'fireworks';
+export type ShapeType = 'sphere' | 'heart' | 'flower' | 'saturn' | 'buddha' | 'fireworks' | 'cluster';
 
 export interface HandStats {
   tension: number;        // 0.0 = open hand, 1.0 = closed fist
