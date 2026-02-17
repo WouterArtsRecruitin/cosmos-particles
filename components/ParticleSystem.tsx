@@ -5,13 +5,13 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ShapeType } from '../types';
 import { generateGeometry, TRAIL_LENGTH } from '../utils/geometryFactory';
+import type { ShaderValues } from './ZenParticles';
 
 interface ParticleSystemProps {
   shape: ShapeType;
   colors: [number, number, number][];  // array of [r,g,b] normalized
   particleCount: number;
-  tension: number;      // visual tension: 0 = contracted, 1 = expanded
-  explosion: number;    // 0-1 explosion intensity
+  shaderValues: React.RefObject<ShaderValues>;
 }
 
 // Simplex noise GLSL implementation (Ashima Arts)
@@ -216,8 +216,7 @@ export default function ParticleSystem({
   shape,
   colors,
   particleCount,
-  tension,
-  explosion,
+  shaderValues,
 }: ParticleSystemProps) {
   const pointsRef = useRef<THREE.Points>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
@@ -291,9 +290,11 @@ export default function ParticleSystem({
       morphRef.current = Math.min(1.0, morphRef.current + 0.02);
     }
 
+    // Read directly from mutable ref — bypasses React render cycle
+    const sv = shaderValues.current;
     materialRef.current.uniforms.uTime.value = t;
-    materialRef.current.uniforms.uTension.value = tension;
-    materialRef.current.uniforms.uExplosion.value = explosion;
+    materialRef.current.uniforms.uTension.value = sv ? sv.tension : 0.5;
+    materialRef.current.uniforms.uExplosion.value = sv ? sv.explosion : 0;
     materialRef.current.uniforms.uMorph.value = morphRef.current;
   });
 

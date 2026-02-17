@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import ParticleSystem from './ParticleSystem';
@@ -27,26 +27,29 @@ const PALETTE: [number, number, number][] = [
   return [c.r, c.g, c.b] as [number, number, number];
 });
 
-export default function ZenParticles() {
-  const [tension, setTension] = useState(0);
-  const [explosion, setExplosion] = useState(0);
+// Shared mutable values — written by hand tracker, read by shader.
+// Bypasses React state entirely so there's zero render latency.
+export interface ShaderValues {
+  tension: number;   // visual tension: 0 = contracted (fist), 1 = expanded (open)
+  explosion: number; // 0-1 explosion intensity
+}
 
-  const explosionDecayRef = useRef<number>(0);
-  const tensionRef = useRef(0); // current tension for the decay loop
-  // Tracks the lowest recent tension (open hand state)
+export default function ZenParticles() {
+  // Direct ref: hand tracker writes, shader reads — no React state involved
+  const shaderValues = useRef<ShaderValues>({ tension: 0.5, explosion: 0 });
+
+  const explosionDecayRef = useRef(0);
+  const rawTensionRef = useRef(0);
   const recentLowRef = useRef(1);
   const explosionCooldownRef = useRef(0);
 
-  // Visual tension = inverted hand tension
-  // Open hand (low hand tension) → high visual tension (expansion)
-  // Closed fist (high hand tension) → low visual tension (contraction)
-  const visualTension = 1 - tension;
-
   const handleHandUpdate = useCallback((stats: HandStats) => {
-    setTension(stats.tension);
-    tensionRef.current = stats.tension;
-
     const t = stats.tension;
+    rawTensionRef.current = t;
+
+    // Write visual tension directly (inverted: open hand = 1, fist = 0)
+    shaderValues.current.tension = 1 - t;
+
     const low = recentLowRef.current;
 
     // Track recent low: drops instantly with hand, drifts up slowly
@@ -62,7 +65,6 @@ export default function ZenParticles() {
     }
 
     // Fist explosion: detect open-hand → fist transition
-    // Uses generous thresholds for mobile/iPhone compatibility
     const delta = t - recentLowRef.current;
     if (
       explosionCooldownRef.current === 0 &&
@@ -70,30 +72,25 @@ export default function ZenParticles() {
       t > 0.4 &&
       delta > 0.2
     ) {
-      setExplosion(1.0);
       explosionDecayRef.current = 1.0;
+      shaderValues.current.explosion = 1.0;
       recentLowRef.current = t;
       explosionCooldownRef.current = 30;
     }
   }, []);
 
-  // Explosion decay: hand-responsive
-  // Fist closed (high tension) → slow decay, particles stay scattered
-  // Hand opening (low tension) → fast decay, particles pull back
+  // Explosion decay loop — writes directly to shaderValues ref
   useEffect(() => {
     let frame: number;
     const decay = () => {
       if (explosionDecayRef.current > 0.01) {
-        // openness = how open the hand is (0 = fist, 1 = open)
-        const openness = 1 - tensionRef.current;
-        // Fist: decay 0.98 (slow, stays exploded)
-        // Open: decay 0.88 (fast, pulls back)
+        const openness = 1 - rawTensionRef.current;
         const rate = 0.98 - openness * 0.10;
         explosionDecayRef.current *= rate;
-        setExplosion(explosionDecayRef.current);
+        shaderValues.current.explosion = explosionDecayRef.current;
       } else if (explosionDecayRef.current > 0) {
         explosionDecayRef.current = 0;
-        setExplosion(0);
+        shaderValues.current.explosion = 0;
       }
       frame = requestAnimationFrame(decay);
     };
@@ -114,8 +111,7 @@ export default function ZenParticles() {
           shape="cluster"
           colors={PALETTE}
           particleCount={PARTICLE_COUNT}
-          tension={visualTension}
-          explosion={explosion}
+          shaderValues={shaderValues}
         />
         <OrbitControls
           enablePan={false}
