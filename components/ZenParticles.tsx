@@ -31,8 +31,11 @@ export default function ZenParticles() {
   const [tension, setTension] = useState(0);
   const [explosion, setExplosion] = useState(0);
 
-  const prevTensionRef = useRef(0);
   const explosionDecayRef = useRef<number>(0);
+  // Tracks the lowest recent tension (open hand state)
+  // Follows tension downward instantly, drifts upward slowly
+  const recentLowRef = useRef(1);
+  const explosionCooldownRef = useRef(0);
 
   // Visual tension = inverted hand tension
   // Open hand (low hand tension) → high visual tension (expansion)
@@ -42,13 +45,32 @@ export default function ZenParticles() {
   const handleHandUpdate = useCallback((stats: HandStats) => {
     setTension(stats.tension);
 
-    // Clap detection: rapid tension spike
-    const prevT = prevTensionRef.current;
-    if (prevT < 0.3 && stats.tension > 0.7) {
+    const t = stats.tension;
+    const low = recentLowRef.current;
+
+    // Track recent low: drops instantly with hand, drifts up slowly
+    if (t < low) {
+      recentLowRef.current = t;
+    } else {
+      recentLowRef.current = low + (t - low) * 0.02;
+    }
+
+    // Cooldown timer (decrements each frame)
+    if (explosionCooldownRef.current > 0) {
+      explosionCooldownRef.current--;
+    }
+
+    // Fist explosion: recent low was open hand, now making a fist
+    if (
+      explosionCooldownRef.current === 0 &&
+      recentLowRef.current < 0.3 &&
+      t > 0.55
+    ) {
       setExplosion(1.0);
       explosionDecayRef.current = 1.0;
+      recentLowRef.current = t; // reset so it doesn't re-trigger
+      explosionCooldownRef.current = 30; // ~0.5s cooldown at 60fps
     }
-    prevTensionRef.current = stats.tension;
   }, []);
 
   // Explosion decay
@@ -56,7 +78,7 @@ export default function ZenParticles() {
     let frame: number;
     const decay = () => {
       if (explosionDecayRef.current > 0.01) {
-        explosionDecayRef.current *= 0.92;
+        explosionDecayRef.current *= 0.95;
         setExplosion(explosionDecayRef.current);
       } else if (explosionDecayRef.current > 0) {
         explosionDecayRef.current = 0;

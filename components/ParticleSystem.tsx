@@ -145,11 +145,18 @@ void main() {
   );
   pos = mix(pos, swirlPos, uTension * 0.3);
 
-  // Explosion: blast outward - massive
+  // Explosion: full cluster blast
   if (uExplosion > 0.01) {
     vec3 dir = normalize(pos + vec3(0.001));
     float dist = length(pos);
-    pos += dir * uExplosion * (15.0 + randomness * 25.0) * (1.0 + dist * 0.4);
+    float power = uExplosion * uExplosion; // ease-in for punchy start
+    pos += dir * power * (25.0 + randomness * 40.0) * (1.0 + dist * 0.5);
+    // Add random scatter for chaotic explosion
+    pos += vec3(
+      snoise(pos * 0.5 + uTime) * power * 8.0,
+      snoise(pos * 0.5 + uTime + 50.0) * power * 8.0,
+      snoise(pos * 0.5 + uTime + 100.0) * power * 8.0
+    );
   }
 
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
