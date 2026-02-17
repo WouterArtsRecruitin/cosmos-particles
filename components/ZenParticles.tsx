@@ -53,7 +53,7 @@ export default function ZenParticles() {
     if (t < low) {
       recentLowRef.current = t;
     } else {
-      recentLowRef.current = low + (t - low) * 0.02;
+      recentLowRef.current = low + (t - low) * 0.03;
     }
 
     // Cooldown timer (decrements each frame)
@@ -61,11 +61,14 @@ export default function ZenParticles() {
       explosionCooldownRef.current--;
     }
 
-    // Fist explosion: recent low was open hand, now making a fist
+    // Fist explosion: detect open-hand → fist transition
+    // Uses generous thresholds for mobile/iPhone compatibility
+    const delta = t - recentLowRef.current;
     if (
       explosionCooldownRef.current === 0 &&
-      recentLowRef.current < 0.3 &&
-      t > 0.55
+      recentLowRef.current < 0.35 &&
+      t > 0.4 &&
+      delta > 0.2
     ) {
       setExplosion(1.0);
       explosionDecayRef.current = 1.0;

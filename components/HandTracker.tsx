@@ -92,6 +92,29 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
+    // Draw tension bar
+    const tensionVal = smoothedRef.current.tension;
+    const barX = 10;
+    const barY = h - 30;
+    const barW = w - 20;
+    const barH = 16;
+    // Background
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(barX, barY, barW, barH);
+    // Fill: green (open) → red (fist)
+    const r = Math.round(tensionVal * 255);
+    const g = Math.round((1 - tensionVal) * 200);
+    ctx.fillStyle = `rgb(${r},${g},60)`;
+    ctx.fillRect(barX, barY, barW * tensionVal, barH);
+    // Border
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX, barY, barW, barH);
+    // Label
+    ctx.fillStyle = '#fff';
+    ctx.font = '11px monospace';
+    ctx.fillText(`T: ${tensionVal.toFixed(2)}`, barX + 4, barY + 12);
+
     if (allLandmarks.length === 0) return;
 
     for (const lm of allLandmarks) {
