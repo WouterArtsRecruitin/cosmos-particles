@@ -95,7 +95,7 @@ export default function ZenParticles() {
   }, []);
 
   return (
-    <div className="w-screen h-screen bg-gradient-to-b from-gray-950 via-black to-gray-950 overflow-hidden">
+    <div className="w-screen h-screen bg-gradient-to-b from-gray-950 via-black to-gray-950 overflow-hidden" style={{ touchAction: 'none' }}>
       {/* Three.js Canvas */}
       <Canvas
         camera={{ position: [0, 0, 30], fov: 60 }}
