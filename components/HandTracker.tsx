@@ -43,7 +43,18 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
     tension: 0,
     centerX: 0.5,
     centerY: 0.5,
+    rotation: 0,
   });
+
+  function calculateRotation(landmarks: any[]): number {
+    const wrist = landmarks[0];
+    const middleMcp = landmarks[9];
+    const dx = middleMcp.x - wrist.x;
+    const dy = middleMcp.y - wrist.y;
+    // Negate dx to compensate for mirrored camera display
+    const angle = Math.atan2(-dx, -dy);
+    return Math.max(-1, Math.min(1, angle / (Math.PI * 0.6)));
+  }
 
   function calculateTension(landmarks: any[]): number {
     const wrist = landmarks[0];
@@ -150,12 +161,14 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
       s.tension = s.tension * 0.92;
       s.centerX = s.centerX + (0.5 - s.centerX) * 0.05;
       s.centerY = s.centerY + (0.5 - s.centerY) * 0.05;
+      s.rotation = s.rotation * 0.95;
 
       onUpdateRef.current({
         tension: s.tension,
         handsDetected: 0,
         centerX: s.centerX,
         centerY: s.centerY,
+        rotation: s.rotation,
       });
       return;
     }
@@ -163,10 +176,12 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
     let totalTension = 0;
     let totalX = 0;
     let totalY = 0;
+    let totalRotation = 0;
 
     for (let i = 0; i < landmarks.length; i++) {
       const lm = landmarks[i];
       totalTension += calculateTension(lm);
+      totalRotation += calculateRotation(lm);
       const wrist = lm[0];
       const middleMcp = lm[9];
       totalX += (wrist.x + middleMcp.x) / 2;
@@ -176,6 +191,7 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
     const tension = totalTension / handsDetected;
     const centerX = totalX / handsDetected;
     const centerY = totalY / handsDetected;
+    const rotation = totalRotation / handsDetected;
 
     // Fast smoothing for responsive feel
     const smooth = 0.55;
@@ -183,12 +199,14 @@ export default function HandTracker({ onUpdate }: HandTrackerProps) {
     s.tension = s.tension + (tension - s.tension) * smooth;
     s.centerX = s.centerX + (centerX - s.centerX) * smooth;
     s.centerY = s.centerY + (centerY - s.centerY) * smooth;
+    s.rotation = s.rotation + (rotation - s.rotation) * smooth;
 
     onUpdateRef.current({
       tension: s.tension,
       handsDetected,
       centerX: s.centerX,
       centerY: s.centerY,
+      rotation: s.rotation,
     });
   }
 

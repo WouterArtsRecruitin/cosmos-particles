@@ -7,6 +7,7 @@ export interface HandStats {
   handsDetected: number;
   centerX: number;        // normalized 0-1
   centerY: number;        // normalized 0-1
+  rotation: number;       // hand tilt: -1 (left) to +1 (right)
 }
 
 export interface ParticleProps {
