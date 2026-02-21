@@ -89,7 +89,7 @@ function CosmosScene({ handRef, shape, color, particleCount, tension, explosion 
 
 export default function ZenParticles() {
   const saved = useRef(loadSession()).current;
-  const [shape, setShape] = useState<ShapeType>(saved?.shape || 'sphere');
+  const [shape, setShape] = useState<ShapeType>(saved?.shape || 'globular');
   const [color, setColor] = useState(saved?.color || '#FFD700');
   const [tension, setTension] = useState(0);
   const [explosion, setExplosion] = useState(0);

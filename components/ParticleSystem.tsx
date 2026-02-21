@@ -14,6 +14,34 @@ interface ParticleSystemProps {
   explosion: number;    // 0-1 explosion intensity
 }
 
+// Stellar type colors for globular cluster
+// Mimics real globular: K/G giants (gold), hot HB (blue-white), A-type (white), blue stragglers
+function getStarColor(): [number, number, number] {
+  const rand = Math.random();
+  if (rand < 0.38) {
+    // K/G type: gold to amber (dominant old giants)
+    const g = 0.72 + Math.random() * 0.14;
+    return [1.0, g, 0.08 + Math.random() * 0.14];
+  } else if (rand < 0.60) {
+    // Blue-white: hot horizontal branch stars
+    const b = 0.82 + Math.random() * 0.1;
+    return [0.60 + Math.random() * 0.15, 0.75 + Math.random() * 0.1, b];
+  } else if (rand < 0.78) {
+    // Warm white: A-type main sequence
+    const w = 0.88 + Math.random() * 0.12;
+    return [w, w, 1.0];
+  } else if (rand < 0.90) {
+    // Pure warm white: bright core stars
+    return [1.0, 0.96, 0.88 + Math.random() * 0.12];
+  } else if (rand < 0.97) {
+    // Orange giants: K/M type
+    return [1.0, 0.52 + Math.random() * 0.1, 0.05 + Math.random() * 0.08];
+  } else {
+    // Blue stragglers: vivid blue
+    return [0.30 + Math.random() * 0.15, 0.50 + Math.random() * 0.15, 1.0];
+  }
+}
+
 // Simplex noise GLSL implementation (Ashima Arts)
 const SIMPLEX_NOISE_GLSL = `
 // Simplex 3D Noise - Ashima Arts
@@ -90,12 +118,14 @@ attribute vec3 targetPos;
 attribute float randomness;
 attribute float pScale;
 attribute float trailIdx;
+attribute vec3 starColor;   // per-particle stellar color
 
 uniform float uTime;
 uniform float uTension;      // visual tension: 0 = contracted, 1 = expanded
 uniform float uExplosion;
 uniform float uMorph;        // 0-1 morph progress to new shape
-uniform vec3 uColor;
+uniform vec3 uColor;         // uniform color (used for non-globular shapes)
+uniform float uMultiColor;   // 0 = use uColor, 1 = use starColor
 
 varying float vTrailIdx;
 varying float vAlpha;
@@ -119,8 +149,7 @@ void main() {
   float ny = snoise(noisePos + vec3(100.0)) * noiseScale;
   float nz = snoise(noisePos + vec3(200.0)) * noiseScale;
 
-  // Visual tension controls expansion/contraction - much more dramatic range
-  // uTension = 1 means expanded (open hand), uTension = 0 means contracted (fist)
+  // Visual tension controls expansion/contraction
   float scaleFactor = 0.5 + uTension * 2.0; // 0.5 to 2.5
   pos *= scaleFactor;
 
@@ -130,11 +159,11 @@ void main() {
   // Breathing
   pos *= 1.0 + breathe * (0.5 + uTension * 0.5);
 
-  // Gravity pull when relaxed (low tension = contracted = more gravity)
+  // Gravity pull when relaxed
   float gravity = (1.0 - uTension) * 0.4;
   pos.y -= gravity;
 
-  // Explosion: blast outward - even more powerful
+  // Explosion: blast outward
   if (uExplosion > 0.01) {
     vec3 dir = normalize(pos + vec3(0.001));
     float dist = length(pos);
@@ -143,17 +172,17 @@ void main() {
 
   vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
 
-  // Point size: larger for cosmic look
+  // Point size
   float baseSize = pScale * (2.5 + uTension * 2.0);
   float trailFade = 1.0 - trailLag * 0.6;
   gl_PointSize = baseSize * trailFade * (300.0 / -mvPosition.z);
 
   gl_Position = projectionMatrix * mvPosition;
 
-  // Pass to fragment
+  // Color: blend between uniform color (shapes) and per-star color (globular)
+  vColor = mix(uColor, starColor, uMultiColor);
   vTrailIdx = trailIdx;
   vAlpha = trailFade * (0.7 + uTension * 0.3);
-  vColor = uColor;
 }
 `;
 
@@ -202,23 +231,29 @@ export default function ParticleSystem({
     return new THREE.Vector3(c.r, c.g, c.b);
   }, [color]);
 
-  // Generate initial geometry with attributes
-  const { positions, targetPositions, randomness, pScale, trailIdx } = useMemo(() => {
+  // Generate initial geometry with attributes (including per-star colors)
+  const { positions, targetPositions, randomness, pScale, trailIdx, starColors } = useMemo(() => {
     const totalVerts = particleCount * TRAIL_LENGTH;
     const pos = generateGeometry(shape, particleCount);
     const target = new Float32Array(pos);
     const rand = new Float32Array(totalVerts);
     const scale = new Float32Array(totalVerts);
     const trail = new Float32Array(totalVerts);
+    const colors = new Float32Array(totalVerts * 3);
 
     for (let i = 0; i < particleCount; i++) {
       const randVal = Math.random();
       const scaleVal = 0.2 + Math.random() * 0.6;
+      const [r, g, b] = getStarColor();
+
       for (let t = 0; t < TRAIL_LENGTH; t++) {
         const idx = i * TRAIL_LENGTH + t;
         rand[idx] = randVal;
         scale[idx] = scaleVal;
         trail[idx] = t;
+        colors[idx * 3]     = r;
+        colors[idx * 3 + 1] = g;
+        colors[idx * 3 + 2] = b;
       }
     }
 
@@ -228,8 +263,9 @@ export default function ParticleSystem({
       randomness: rand,
       pScale: scale,
       trailIdx: trail,
+      starColors: colors,
     };
-  }, [particleCount]);
+  }, [particleCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle shape changes: update target positions and trigger morph
   useEffect(() => {
@@ -261,6 +297,8 @@ export default function ParticleSystem({
     materialRef.current.uniforms.uExplosion.value = explosion;
     materialRef.current.uniforms.uMorph.value = morphRef.current;
     materialRef.current.uniforms.uColor.value = colorVec;
+    // Globular cluster uses per-star colors; other shapes use uniform uColor
+    materialRef.current.uniforms.uMultiColor.value = shape === 'globular' ? 1.0 : 0.0;
   });
 
   const totalVerts = particleCount * TRAIL_LENGTH;
@@ -288,6 +326,10 @@ export default function ParticleSystem({
           attach="attributes-trailIdx"
           args={[trailIdx, 1]}
         />
+        <bufferAttribute
+          attach="attributes-starColor"
+          args={[starColors, 3]}
+        />
       </bufferGeometry>
       <shaderMaterial
         ref={materialRef}
@@ -302,6 +344,7 @@ export default function ParticleSystem({
           uExplosion: { value: 0 },
           uMorph: { value: 1.0 },
           uColor: { value: colorVec },
+          uMultiColor: { value: shape === 'globular' ? 1.0 : 0.0 },
         }}
       />
     </points>

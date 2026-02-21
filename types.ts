@@ -1,6 +1,6 @@
 'use client';
 
-export type ShapeType = 'sphere' | 'heart' | 'flower' | 'saturn' | 'buddha' | 'fireworks';
+export type ShapeType = 'globular' | 'sphere' | 'heart' | 'flower' | 'saturn' | 'buddha' | 'fireworks';
 
 export interface HandStats {
   tension: number;        // 0.0 = open hand, 1.0 = closed fist
@@ -19,6 +19,7 @@ export interface ParticleProps {
 }
 
 export const SHAPES: { type: ShapeType; label: string }[] = [
+  { type: 'globular', label: 'Globular' },
   { type: 'sphere', label: 'Sphere' },
   { type: 'heart', label: 'Heart' },
   { type: 'flower', label: 'Flower' },

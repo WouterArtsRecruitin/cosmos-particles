@@ -3,6 +3,7 @@
 import React from 'react';
 import { ShapeType, SHAPES, PRESET_COLORS } from '../types';
 import {
+  Globe,
   Circle,
   Heart,
   Flower2,
@@ -20,6 +21,7 @@ interface ControlsProps {
 }
 
 const SHAPE_ICONS: Record<ShapeType, React.ReactNode> = {
+  globular: <Globe size={18} />,
   sphere: <Circle size={18} />,
   heart: <Heart size={18} />,
   flower: <Flower2 size={18} />,

@@ -6,6 +6,54 @@ function jitter(v: number, amount: number): number {
   return v + (Math.random() - 0.5) * amount;
 }
 
+// Box-Muller Gaussian random
+function gaussianRandom(): number {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
+
+// Realistic globular cluster: King-like density profile
+// Dense core (half of stars within rc), thinning exponentially, sparse outer halo
+function generateGlobularCluster(count: number): Float32Array {
+  const positions = new Float32Array(count * 3);
+  const rc = 2.0;  // core radius
+  const rt = 9.5;  // tidal radius (hard cutoff)
+
+  for (let i = 0; i < count; i++) {
+    // Three-population King-like sampling:
+    // 55% core, 30% middle halo, 15% extended outer halo
+    let r: number;
+    const dice = Math.random();
+
+    if (dice < 0.55) {
+      // Dense core: tight Gaussian (most stars packed here)
+      r = Math.abs(gaussianRandom() * rc * 0.65);
+    } else if (dice < 0.85) {
+      // Mid-halo
+      r = Math.abs(gaussianRandom() * rc * 2.2);
+    } else {
+      // Extended outer halo — sparse scattered stars
+      r = Math.abs(gaussianRandom() * rc * 4.0);
+    }
+
+    // Clamp to tidal radius
+    r = Math.min(r, rt);
+
+    // Uniform random direction on sphere
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const sinPhi = Math.sin(phi);
+
+    positions[i * 3]     = r * sinPhi * Math.cos(theta);
+    positions[i * 3 + 1] = r * sinPhi * Math.sin(theta);
+    positions[i * 3 + 2] = r * Math.cos(phi);
+  }
+
+  return positions;
+}
+
 function generateSphere(count: number): Float32Array {
   const positions = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
@@ -190,13 +238,14 @@ function generateFireworks(count: number): Float32Array {
 export function generateGeometry(type: ShapeType, count: number): Float32Array {
   let base: Float32Array;
   switch (type) {
+    case 'globular':  base = generateGlobularCluster(count); break;
     case 'sphere':    base = generateSphere(count); break;
     case 'heart':     base = generateHeart(count); break;
     case 'flower':    base = generateFlower(count); break;
     case 'saturn':    base = generateSaturn(count); break;
     case 'buddha':    base = generateBuddha(count); break;
     case 'fireworks': base = generateFireworks(count); break;
-    default:          base = generateSphere(count); break;
+    default:          base = generateGlobularCluster(count); break;
   }
 
   // Multiply by TRAIL_LENGTH: each real particle gets trailing copies
