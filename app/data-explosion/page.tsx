@@ -431,38 +431,22 @@ export default function DataExplosion() {
     return () => { cleanupRef.current?.(); };
   }, []);
 
+  const navStyle: React.CSSProperties = {
+    display: 'inline-block', padding: '6px 16px', fontSize: 12,
+    letterSpacing: '0.15em', textTransform: 'uppercase',
+    color: 'rgba(0, 242, 255, 0.6)', border: '1px solid rgba(0, 242, 255, 0.2)',
+    borderRadius: 9999, textDecoration: 'none', transition: 'all 0.3s',
+  };
+
   return (
     <>
-      {/* Navigation back to Cosmos */}
+      {/* Navigation */}
       <div style={{
         position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)',
-        zIndex: 50, textAlign: 'center',
+        zIndex: 50, textAlign: 'center', display: 'flex', gap: 12,
       }}>
-        <Link
-          href="/"
-          style={{
-            display: 'inline-block',
-            padding: '6px 16px',
-            fontSize: 12,
-            letterSpacing: '0.15em',
-            textTransform: 'uppercase' as const,
-            color: 'rgba(0, 242, 255, 0.6)',
-            border: '1px solid rgba(0, 242, 255, 0.2)',
-            borderRadius: 9999,
-            textDecoration: 'none',
-            transition: 'all 0.3s',
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.color = 'rgba(0, 242, 255, 0.9)';
-            e.currentTarget.style.borderColor = 'rgba(0, 242, 255, 0.5)';
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.color = 'rgba(0, 242, 255, 0.6)';
-            e.currentTarget.style.borderColor = 'rgba(0, 242, 255, 0.2)';
-          }}
-        >
-          ← Cosmos
-        </Link>
+        <Link href="/" style={navStyle}>&#8592; Cosmos</Link>
+        <Link href="/mobile-sphere" style={navStyle}>Mobile Sphere &#8594;</Link>
       </div>
 
       {/* WebGL container */}

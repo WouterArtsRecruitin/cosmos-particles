@@ -160,12 +160,20 @@ export default function ZenParticles() {
         <p className="text-sm text-white/40 tracking-wider pointer-events-none">
           Beweeg hand → cluster volgt &middot; Open = uitdijen &middot; Vuist = samentrekken &middot; Kantel = draaien &middot; Klap = explosie
         </p>
-        <a
-          href="/data-explosion"
-          className="inline-block mt-3 px-4 py-1.5 text-xs tracking-widest uppercase text-cyan-400/70 border border-cyan-400/20 rounded-full hover:text-cyan-300 hover:border-cyan-400/50 hover:bg-cyan-400/5 transition-all duration-300"
-        >
-          Data Explosion →
-        </a>
+        <div className="mt-3 flex gap-3 justify-center">
+          <a
+            href="/data-explosion"
+            className="px-4 py-1.5 text-xs tracking-widest uppercase text-cyan-400/70 border border-cyan-400/20 rounded-full hover:text-cyan-300 hover:border-cyan-400/50 hover:bg-cyan-400/5 transition-all duration-300"
+          >
+            Data Explosion
+          </a>
+          <a
+            href="/mobile-sphere"
+            className="px-4 py-1.5 text-xs tracking-widest uppercase text-cyan-400/70 border border-cyan-400/20 rounded-full hover:text-cyan-300 hover:border-cyan-400/50 hover:bg-cyan-400/5 transition-all duration-300"
+          >
+            Mobile Sphere
+          </a>
+        </div>
       </div>
 
       {/* Three.js Canvas */}
