@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Data Explosion</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #000000; }
+        #webcam {
+            position: fixed; top: 0; left: 0;
+            width: 1px; height: 1px; opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <video id="webcam" playsinline muted></video>
+
+    <!-- Global CDN libs (loaded before module script) -->
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js"></script>
+
+    <!-- Three.js via ES Module importmap -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    /* ==========================================================
+       CONFIG
+    ========================================================== */
+    const CONFIG = {
+        PARTICLE_COUNT: 5000,
+        TUNNEL_RADIUS:  3.0,
+        TUNNEL_SPREAD:  2.0,
+        Z_FAR:          -100,
+        Z_CAMERA:       5,
+        BASE_SPEED:     0.12,
+        CAM_LERP:       0.035,
+        BLOOM_DEFAULT:  2.5,
+        BLOOM_WARP:     5.0,
+        BLOOM_BANG:     15.0,
+        BLOOM_RADIUS:   0.5,
+        BLOOM_THRESH:   0.1,
+        FOG_DENSITY:    0.012,
+        ATLAS_GRID:     16,
+        ATLAS_CELL:     64,
+    };
+
+    /* ==========================================================
+       STATE
+    ========================================================== */
+    let exploded       = false;
+    let speedMult      = 1.0;
+    let camTX = 0, camTY = 0;
+    let prevPalmDist   = 0;
+    let bloomTweening  = false;
+
+    /* ==========================================================
+       DIGIT TEXTURE ATLAS  (16 x 16 grid = 256 cells)
+       Each cell has a random digit (0-9) with slight size
+       variation for an organic, dynamic look.
+    ========================================================== */
+    function createDigitAtlas() {
+        const { ATLAS_GRID: g, ATLAS_CELL: cell } = CONFIG;
+        const c   = document.createElement('canvas');
+        c.width   = cell * g;
+        c.height  = cell * g;
+        const ctx = c.getContext('2d');
+        ctx.clearRect(0, 0, c.width, c.height);
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle    = '#ffffff';
+
+        for (let row = 0; row < g; row++) {
+            for (let col = 0; col < g; col++) {
+                const digit = Math.floor(Math.random() * 10);
+                const size  = 28 + Math.random() * 20;
+                ctx.font = `bold ${size}px "Courier New", monospace`;
+                ctx.fillText(
+                    String(digit),
+                    col * cell + cell / 2,
+                    row * cell + cell / 2
+                );
+            }
+        }
+
+        const tex = new THREE.CanvasTexture(c);
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        return tex;
+    }
+
+    /* ==========================================================
+       THREE.JS  —  Scene, Camera, Renderer
+    ========================================================== */
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    scene.fog = new THREE.FogExp2(0x000000, CONFIG.FOG_DENSITY);
+
+    const camera = new THREE.PerspectiveCamera(
+        75, innerWidth / innerHeight, 0.1, 200
+    );
+    camera.position.set(0, 0, CONFIG.Z_CAMERA);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    /* ==========================================================
+       BLOOM POST-PROCESSING
+    ========================================================== */
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+
+    const bloom = new UnrealBloomPass(
+        new THREE.Vector2(innerWidth, innerHeight),
+        CONFIG.BLOOM_DEFAULT,
+        CONFIG.BLOOM_RADIUS,
+        CONFIG.BLOOM_THRESH
+    );
+    composer.addPass(bloom);
+
+    /* ==========================================================
+       PARTICLE DATA
+    ========================================================== */
+    const atlas = createDigitAtlas();
+
+    function makeTunnelPos() {
+        const angle  = Math.random() * Math.PI * 2;
+        const onWall = Math.random() < 0.7;
+        const r = onWall
+            ? CONFIG.TUNNEL_RADIUS + (Math.random() - 0.5) * CONFIG.TUNNEL_SPREAD
+            : Math.random() * (CONFIG.TUNNEL_RADIUS - 0.5);
+        return {
+            angle, r,
+            x: Math.cos(angle) * r,
+            y: Math.sin(angle) * r,
+        };
+    }
+
+    const particles = [];
+    for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
+        const t = makeTunnelPos();
+        const s = 0.10 + Math.random() * 0.15;
+        particles.push({
+            x: t.x,
+            y: t.y,
+            z: CONFIG.Z_FAR + Math.random() * (CONFIG.Z_CAMERA - CONFIG.Z_FAR),
+            tunnelAngle: t.angle,
+            tunnelR:     t.r,
+            spd: 0.7 + Math.random() * 0.6,
+            sx: s,
+            sy: s * 1.3,
+            vx: 0, vy: 0, vz: 0,
+        });
+    }
+
+    /* ==========================================================
+       INSTANCED MESH  +  onBeforeCompile
+       -------------------------------------------------------
+       MeshBasicMaterial with the cyan colour (#00f2ff) and
+       AdditiveBlending.  The digit selection is handled by a
+       per-instance UV offset (instanceUV) into the 16x16
+       texture atlas, injected via onBeforeCompile.
+    ========================================================== */
+    const geo = new THREE.PlaneGeometry(1, 1);
+
+    const mat = new THREE.MeshBasicMaterial({
+        map:        atlas,
+        color:      0x00f2ff,
+        transparent: true,
+        depthWrite:  false,
+        blending:    THREE.AdditiveBlending,
+        side:        THREE.DoubleSide,
+        fog:         true,
+    });
+
+    // Per-instance UV offset → selects a cell in the 16x16 atlas
+    const instanceUV = new Float32Array(CONFIG.PARTICLE_COUNT * 2);
+    for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
+        instanceUV[i * 2]     = Math.floor(Math.random() * CONFIG.ATLAS_GRID) / CONFIG.ATLAS_GRID;
+        instanceUV[i * 2 + 1] = Math.floor(Math.random() * CONFIG.ATLAS_GRID) / CONFIG.ATLAS_GRID;
+    }
+
+    mat.onBeforeCompile = (shader) => {
+        /* --- Vertex shader ---
+           1. Declare the instanceUV attribute
+           2. After the standard #include <uv_vertex> computes vMapUv,
+              override it with our per-instance atlas lookup:
+              vMapUv = uv / 16.0 + instanceUV                            */
+        shader.vertexShader = shader.vertexShader
+            .replace(
+                '#include <common>',
+                'attribute vec2 instanceUV;\n#include <common>'
+            )
+            .replace(
+                '#include <uv_vertex>',
+                [
+                    '#include <uv_vertex>',
+                    '#ifdef USE_MAP',
+                    '  vMapUv = uv / ' + CONFIG.ATLAS_GRID.toFixed(1) + ' + instanceUV;',
+                    '#endif',
+                ].join('\n')
+            );
+
+        /* --- Fragment shader ---
+           No changes needed: the standard map_fragment chunk already
+           samples texture2D(map, vMapUv), which now contains our
+           per-instance UV.                                              */
+    };
+
+    const mesh = new THREE.InstancedMesh(geo, mat, CONFIG.PARTICLE_COUNT);
+
+    mesh.geometry.setAttribute(
+        'instanceUV',
+        new THREE.InstancedBufferAttribute(instanceUV, 2)
+    );
+
+    // Initialise instance matrices (position + scale)
+    const _dummy = new THREE.Object3D();
+    for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
+        const p = particles[i];
+        _dummy.position.set(p.x, p.y, p.z);
+        _dummy.scale.set(p.sx, p.sy, 1);
+        _dummy.updateMatrix();
+        mesh.setMatrixAt(i, _dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    scene.add(mesh);
+
+    /* ==========================================================
+       HAND-TRACKING  (MediaPipe Hands via CDN)
+    ========================================================== */
+    const videoEl = document.getElementById('webcam');
+
+    /** Average distance from wrist to all five fingertips. */
+    function palmDist(lm) {
+        const w = lm[0];
+        let s = 0;
+        for (const i of [4, 8, 12, 16, 20])
+            s += Math.hypot(lm[i].x - w.x, lm[i].y - w.y);
+        return s / 5;
+    }
+
+    /** Thumb-tip (4) close to index-tip (8). */
+    function isPinch(lm) {
+        return Math.hypot(
+            lm[4].x - lm[8].x,
+            lm[4].y - lm[8].y,
+            lm[4].z - lm[8].z
+        ) < 0.05;
+    }
+
+    function onHands(results) {
+        const lms = results.multiHandLandmarks;
+
+        if (!lms || !lms.length) {
+            // No hand → drift camera back to centre
+            camTX *= 0.95;
+            camTY *= 0.95;
+            speedMult += (1 - speedMult) * 0.04;
+            if (!exploded && !bloomTweening)
+                bloom.strength += (CONFIG.BLOOM_DEFAULT - bloom.strength) * 0.04;
+            return;
+        }
+
+        const lm = lms[0];
+
+        /* --- Navigation: index fingertip (landmark 8) --- */
+        camTX =  (lm[8].x - 0.5) * 8;
+        camTY = -(lm[8].y - 0.5) * 6;
+
+        /* --- Pinch → warp speed --- */
+        if (isPinch(lm)) {
+            speedMult += (2.0 - speedMult) * 0.12;
+            if (!bloomTweening)
+                bloom.strength += (CONFIG.BLOOM_WARP - bloom.strength) * 0.1;
+        } else {
+            speedMult += (1.0 - speedMult) * 0.05;
+            if (!exploded && !bloomTweening)
+                bloom.strength += (CONFIG.BLOOM_DEFAULT - bloom.strength) * 0.05;
+        }
+
+        /* --- Big Bang & Reset --- */
+        const pd = palmDist(lm);
+
+        // Rapid palm opening → explosion
+        if (!exploded && pd > 0.4 && prevPalmDist < 0.3) {
+            triggerBang();
+        }
+
+        // Fist → reset tunnel
+        if (exploded && pd < 0.2) {
+            resetTunnel();
+        }
+
+        prevPalmDist = pd;
+    }
+
+    /* ==========================================================
+       EXPLOSION  &  RESET
+    ========================================================== */
+    function triggerBang() {
+        exploded      = true;
+        bloomTweening = true;
+
+        for (const p of particles) {
+            const a   = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            const s   = 0.6 + Math.random() * 2.5;
+            p.vx = Math.sin(phi) * Math.cos(a) * s;
+            p.vy = Math.sin(phi) * Math.sin(a) * s;
+            p.vz = Math.cos(phi) * s;
+        }
+
+        // Bloom flash → GSAP tween back
+        bloom.strength = CONFIG.BLOOM_BANG;
+        gsap.to(bloom, {
+            strength:   CONFIG.BLOOM_DEFAULT,
+            duration:   0.5,
+            ease:       'power2.out',
+            onComplete: () => { bloomTweening = false; },
+        });
+    }
+
+    function resetTunnel() {
+        exploded = false;
+        for (const p of particles) {
+            p.vx = p.vy = p.vz = 0;
+            const t = makeTunnelPos();
+            p.tunnelAngle = t.angle;
+            p.tunnelR     = t.r;
+        }
+    }
+
+    /* ==========================================================
+       INIT MEDIAPIPE  (async, non-blocking)
+    ========================================================== */
+    (async () => {
+        try {
+            const hands = new Hands({
+                locateFile: f =>
+                    `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}`,
+            });
+
+            hands.setOptions({
+                maxNumHands:            1,
+                modelComplexity:        1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence:  0.4,
+            });
+
+            hands.onResults(onHands);
+
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: 640, height: 480, facingMode: 'user' },
+            });
+            videoEl.srcObject = stream;
+            await videoEl.play();
+
+            const cam = new Camera(videoEl, {
+                onFrame: async () => { await hands.send({ image: videoEl }); },
+                width: 640,
+                height: 480,
+            });
+            await cam.start();
+        } catch (e) {
+            console.warn('Hand tracking unavailable:', e.message);
+        }
+    })();
+
+    /* ==========================================================
+       ANIMATION LOOP
+    ========================================================== */
+    const clock = new THREE.Clock();
+
+    (function loop() {
+        requestAnimationFrame(loop);
+
+        const elapsed = clock.getElapsedTime();
+
+        /* --- Camera: smooth lerp + subtle ambient drift --- */
+        const autoX = Math.sin(elapsed * 0.2) * 0.3;
+        const autoY = Math.cos(elapsed * 0.15) * 0.2;
+        camera.position.x += (camTX + autoX - camera.position.x) * CONFIG.CAM_LERP;
+        camera.position.y += (camTY + autoY - camera.position.y) * CONFIG.CAM_LERP;
+        camera.lookAt(
+            camera.position.x * 0.3,
+            camera.position.y * 0.3,
+            -50
+        );
+
+        /* --- Update every particle --- */
+        let uvDirty = false;
+
+        for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
+            const p = particles[i];
+
+            if (exploded) {
+                /* Explosion: fly outward, slow deceleration */
+                p.x += p.vx;
+                p.y += p.vy;
+                p.z += p.vz;
+                p.vx *= 0.993;
+                p.vy *= 0.993;
+                p.vz *= 0.993;
+            } else {
+                /* Lerp x,y toward tunnel wall position */
+                const tx = Math.cos(p.tunnelAngle) * p.tunnelR;
+                const ty = Math.sin(p.tunnelAngle) * p.tunnelR;
+                p.x += (tx - p.x) * 0.04;
+                p.y += (ty - p.y) * 0.04;
+
+                /* Forward movement through tunnel */
+                p.z += CONFIG.BASE_SPEED * p.spd * speedMult;
+
+                /* Wrap when past camera → reset to far horizon */
+                if (p.z > CONFIG.Z_CAMERA) {
+                    p.z = CONFIG.Z_FAR + Math.random() * 5;
+                    const t = makeTunnelPos();
+                    p.tunnelAngle = t.angle;
+                    p.tunnelR     = t.r;
+                    p.x = t.x;
+                    p.y = t.y;
+
+                    // Re-randomise atlas cell for variety
+                    instanceUV[i * 2]     = Math.floor(Math.random() * CONFIG.ATLAS_GRID) / CONFIG.ATLAS_GRID;
+                    instanceUV[i * 2 + 1] = Math.floor(Math.random() * CONFIG.ATLAS_GRID) / CONFIG.ATLAS_GRID;
+                    uvDirty = true;
+                }
+            }
+
+            _dummy.position.set(p.x, p.y, p.z);
+            _dummy.scale.set(p.sx, p.sy, 1);
+            _dummy.updateMatrix();
+            mesh.setMatrixAt(i, _dummy.matrix);
+        }
+
+        mesh.instanceMatrix.needsUpdate = true;
+        if (uvDirty) {
+            mesh.geometry.attributes.instanceUV.needsUpdate = true;
+        }
+
+        /* --- Render with bloom --- */
+        composer.render();
+    })();
+
+    /* ==========================================================
+       RESIZE
+    ========================================================== */
+    addEventListener('resize', () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+        composer.setSize(innerWidth, innerHeight);
+    });
+    </script>
+</body>
+</html>
