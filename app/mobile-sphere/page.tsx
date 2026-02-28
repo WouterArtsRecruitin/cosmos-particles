@@ -4,22 +4,32 @@ import React, { useEffect, useRef } from 'react';
 import Link from 'next/link';
 
 /* ==========================================================
-   Mobile Data Sphere — Design 3
-   Interactive 3D sphere of glowing cyan digits with
-   hand-tracking, touch/mouse fallback, bloom, and
-   explosion/reset gestures. Optimised for mobile.
-   Uses onBeforeCompile with vInstanceUV for atlas lookup.
+   Mobile Data Sphere — Design 3 (Enhanced)
+   Interactive 3D sphere of glowing digits with hand-tracking,
+   touch/mouse fallback, bloom, and explosion/reset gestures.
+   Optimised for mobile with 10 000 particles.
+
+   Visual quality upgrades (Cosmos-inspired):
+   • Per-particle size variation
+   • King-like Gaussian distribution (dense core, sparse halo)
+   • 5 blue-adjacent colour populations for 3D depth
+   • Slow heartbeat pulse (lub-dub pattern)
+   • High-res 2048px digit atlas for sharp text
    ========================================================== */
 
 const CONFIG = {
   GRID_SIZE:            4,
-  COLOR:                0x00f2ff,
   SPHERE_RADIUS:        5,
+  CORE_R:               1.8,
+  MID_R:                4.0,
+  OUTER_R:              7.0,
+  TIDAL_R:              8.5,
   PALM_OPEN_THRESHOLD:  0.35,
   FIST_THRESHOLD:       0.15,
-  BLOOM_DEFAULT:        2.5,
+  BLOOM_DEFAULT:        1.8,
   BLOOM_BANG:           15.0,
-  BLOOM_AFTER:          3.0,
+  BLOOM_AFTER:          2.2,
+  HEARTBEAT_CYCLE:      2.8,
 };
 
 export default function MobileSphere() {
@@ -37,7 +47,7 @@ export default function MobileSphere() {
       const { UnrealBloomPass } = await import('three/addons/postprocessing/UnrealBloomPass.js' as string);
       if (disposed) return;
 
-      const PARTICLE_COUNT = innerWidth < 768 ? 4000 : 6000;
+      const PARTICLE_COUNT = innerWidth < 768 ? 10000 : 12000;
 
       /* ---- STATE ---- */
       let isExploded = false;
@@ -50,21 +60,67 @@ export default function MobileSphere() {
       const uiEl = document.getElementById('sphere-ui')!;
       const gestureEl = document.getElementById('sphere-gesture')!;
 
-      /* ---- TEXTURE ATLAS (4×4 grid, digits 0-9) ---- */
+      /* ---- HEARTBEAT FUNCTION ---- */
+      function heartbeat(t: number): number {
+        const cycle = t % CONFIG.HEARTBEAT_CYCLE;
+        if (cycle < 0.12)
+          return Math.sin(cycle / 0.12 * Math.PI) * 0.06;
+        if (cycle < 0.35) return 0;
+        if (cycle < 0.47)
+          return Math.sin((cycle - 0.35) / 0.12 * Math.PI) * 0.03;
+        return 0;
+      }
+
+      /* ---- GAUSSIAN RANDOM (Box-Muller) ---- */
+      function gaussRandom(): number {
+        return Math.sqrt(-2 * Math.log(Math.random())) *
+               Math.cos(2 * Math.PI * Math.random());
+      }
+
+      /* ---- COLOUR PALETTE (5 blue variations) ---- */
+      function getParticleColor(): [number, number, number] {
+        const roll = Math.random();
+        if (roll < 0.30) return [0.0,  0.95, 1.0];              // Cyaan
+        if (roll < 0.55) return [0.35 + Math.random() * 0.10,   // Lichtblauw
+                                 0.70 + Math.random() * 0.10,
+                                 1.0];
+        if (roll < 0.75) return [0.10 + Math.random() * 0.10,   // Diepblauw
+                                 0.40 + Math.random() * 0.15,
+                                 1.0];
+        if (roll < 0.90) return [0.0,                            // Teal
+                                 0.75 + Math.random() * 0.10,
+                                 0.80 + Math.random() * 0.10];
+        return [0.70 + Math.random() * 0.15,                     // Wit-blauw
+                0.88 + Math.random() * 0.07,
+                1.0];
+      }
+
+      /* ---- TEXTURE ATLAS (2048px, 4×4 grid, sharp digits) ---- */
       function createAtlas() {
         const c = document.createElement('canvas');
-        c.width = 512; c.height = 512;
+        c.width = 2048; c.height = 2048;
         const ctx = c.getContext('2d')!;
-        const step = 512 / CONFIG.GRID_SIZE;
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 80px monospace';
+        const step = 2048 / CONFIG.GRID_SIZE;
         ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
         for (let i = 0; i < 10; i++) {
           const x = (i % CONFIG.GRID_SIZE) * step + step / 2;
-          const y = Math.floor(i / CONFIG.GRID_SIZE) * step + step / 1.3;
+          const y = Math.floor(i / CONFIG.GRID_SIZE) * step + step / 2;
+          const fontSize = 240 + Math.random() * 80;
+          ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+          // Outline for definition
+          ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+          ctx.lineWidth = 3;
+          ctx.strokeText(i.toString(), x, y);
+          // Fill
+          ctx.fillStyle = 'white';
           ctx.fillText(i.toString(), x, y);
         }
-        return new THREE.CanvasTexture(c);
+        const tex = new THREE.CanvasTexture(c);
+        tex.minFilter = THREE.LinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.anisotropy = 4;
+        return tex;
       }
 
       /* ---- SCENE / CAMERA / RENDERER ---- */
@@ -77,23 +133,27 @@ export default function MobileSphere() {
       renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
       containerRef.current!.appendChild(renderer.domElement);
 
-      /* ---- BLOOM ---- */
+      /* ---- BLOOM (lower default for sharper digits) ---- */
       const composer = new EffectComposer(renderer);
       composer.addPass(new RenderPass(scene, camera));
       const bloomPass = new UnrealBloomPass(
-        new THREE.Vector2(innerWidth, innerHeight), CONFIG.BLOOM_DEFAULT, 0.5, 0.1
+        new THREE.Vector2(innerWidth, innerHeight), CONFIG.BLOOM_DEFAULT, 0.4, 0.15
       );
       composer.addPass(bloomPass);
 
-      /* ---- PARTICLES (sphere formation) ---- */
+      /* ---- PARTICLES (King-like sphere distribution) ---- */
       const atlasTexture = createAtlas();
-      const geometry = new THREE.PlaneGeometry(0.2, 0.2);
+      atlasTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+      const geometry = new THREE.PlaneGeometry(1, 1);
       const instanceUV = new Float32Array(PARTICLE_COUNT * 2);
 
       interface SphereParticle {
         x: number; y: number; z: number;
         origX: number; origY: number; origZ: number;
         vx: number; vy: number; vz: number;
+        scale: number;
+        phase: number;
       }
 
       const particles: SphereParticle[] = [];
@@ -102,7 +162,14 @@ export default function MobileSphere() {
         instanceUV[i * 2]     = (digit % CONFIG.GRID_SIZE) / CONFIG.GRID_SIZE;
         instanceUV[i * 2 + 1] = Math.floor(digit / CONFIG.GRID_SIZE) / CONFIG.GRID_SIZE;
 
-        const r     = Math.cbrt(Math.random()) * CONFIG.SPHERE_RADIUS;
+        // King-like distribution: dense core, sparse halo
+        const pop = Math.random();
+        let r: number;
+        if (pop < 0.50)      r = Math.abs(gaussRandom() * CONFIG.CORE_R);
+        else if (pop < 0.80) r = Math.abs(gaussRandom() * CONFIG.MID_R);
+        else                 r = Math.abs(gaussRandom() * CONFIG.OUTER_R);
+        r = Math.min(r, CONFIG.TIDAL_R);
+
         const theta = Math.random() * 2 * Math.PI;
         const phi   = Math.acos(Math.random() * 2 - 1);
 
@@ -115,6 +182,8 @@ export default function MobileSphere() {
         particles.push({
           x, y, z, origX: x, origY: y, origZ: z,
           vx: (x / len) * ef, vy: (y / len) * ef, vz: (z / len) * ef,
+          scale: 0.08 + Math.random() * 0.25,
+          phase: Math.random() * 0.5,
         });
       }
 
@@ -124,7 +193,8 @@ export default function MobileSphere() {
       const material = new THREE.MeshBasicMaterial({
         map: atlasTexture, transparent: true,
         blending: THREE.AdditiveBlending,
-        color: CONFIG.COLOR, side: THREE.DoubleSide,
+        color: 0xffffff,
+        side: THREE.DoubleSide,
       });
 
       material.onBeforeCompile = (shader: any) => {
@@ -135,6 +205,16 @@ export default function MobileSphere() {
       };
 
       const iMesh = new THREE.InstancedMesh(geometry, material, PARTICLE_COUNT);
+
+      // Per-instance colour (5 blue populations for 3D depth)
+      const tmpColor = new THREE.Color();
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const [r, g, b] = getParticleColor();
+        tmpColor.setRGB(r, g, b);
+        iMesh.setColorAt(i, tmpColor);
+      }
+      iMesh.instanceColor!.needsUpdate = true;
+
       scene.add(iMesh);
 
       /* ---- EXPLOSION / RESET ---- */
@@ -205,6 +285,7 @@ export default function MobileSphere() {
 
           const video = document.createElement('video');
           video.setAttribute('playsinline', '');
+          video.setAttribute('webkit-playsinline', '');
           video.muted = true;
           video.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none';
           document.body.appendChild(video);
@@ -216,7 +297,7 @@ export default function MobileSphere() {
           });
           hands.setOptions({
             maxNumHands: 1, modelComplexity: 1,
-            minDetectionConfidence: 0.7, minTrackingConfidence: 0.5,
+            minDetectionConfidence: 0.6, minTrackingConfidence: 0.4,
           });
 
           hands.onResults((results: any) => {
@@ -236,9 +317,24 @@ export default function MobileSphere() {
             prevPalmSpread = avg;
           });
 
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 640, height: 480, facingMode: 'user' },
-          });
+          // Force selfie camera with fallback
+          let stream: MediaStream;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                facingMode: { exact: 'user' },
+                width: { ideal: 640, max: 1280 },
+                height: { ideal: 480, max: 720 },
+                frameRate: { ideal: 30 },
+              },
+            });
+          } catch {
+            // Fallback without "exact" for older devices
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: 'user', width: 640, height: 480 },
+            });
+          }
+
           video.srcObject = stream;
           if (preview) preview.srcObject = stream;
           await video.play();
@@ -249,7 +345,6 @@ export default function MobileSphere() {
           }
           processVideo();
 
-          // Hide loading
           const loadEl = document.getElementById('sphere-loading');
           if (loadEl) loadEl.classList.add('hidden');
 
@@ -277,10 +372,10 @@ export default function MobileSphere() {
         if (disposed) return;
         animId = requestAnimationFrame(loop);
         const time = clock.getElapsedTime();
-        const breathScale = 1.0 + Math.sin(time * 2.0) * 0.05;
 
-        iMesh.rotation.y += 0.002;
-        iMesh.rotation.x += 0.001;
+        // Slow rotation (3x slower than before)
+        iMesh.rotation.y += 0.0006;
+        iMesh.rotation.x += 0.0003;
 
         targetRotX += (inputX - targetRotX) * 0.05;
         targetRotY += (inputY - targetRotY) * 0.05;
@@ -294,11 +389,14 @@ export default function MobileSphere() {
           if (isExploded) {
             p.x += p.vx; p.y += p.vy; p.z += p.vz;
           } else {
+            // Per-particle heartbeat with phase offset
+            const breathScale = 1.0 + heartbeat(time + p.phase);
             p.x += (p.origX * breathScale - p.x) * 0.08;
             p.y += (p.origY * breathScale - p.y) * 0.08;
             p.z += (p.origZ * breathScale - p.z) * 0.08;
           }
           dummy.position.set(p.x, p.y, p.z);
+          dummy.scale.set(p.scale, p.scale * 1.2, 1);
           dummy.quaternion.copy(camera.quaternion);
           dummy.updateMatrix();
           iMesh.setMatrixAt(i, dummy.matrix);
@@ -358,7 +456,8 @@ export default function MobileSphere() {
         <div>INITIALIZING NEURAL CORE<br />
           <span style={{ fontSize: 10, opacity: 0.5, marginTop: 10, display: 'block' }}>Please allow camera access</span>
         </div>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }
+.hidden{opacity:0!important;pointer-events:none!important}`}</style>
       </div>
 
       {/* HUD */}
