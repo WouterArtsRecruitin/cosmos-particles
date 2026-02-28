@@ -153,13 +153,27 @@ export default function ZenParticles() {
   return (
     <div className="w-screen h-screen bg-gradient-to-b from-gray-950 via-black to-gray-950 overflow-hidden">
       {/* Title */}
-      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 text-center pointer-events-none">
-        <h1 className="text-3xl font-bold tracking-[0.3em] text-white/80 mb-1">
+      <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 text-center">
+        <h1 className="text-3xl font-bold tracking-[0.3em] text-white/80 mb-1 pointer-events-none">
           COSMOS
         </h1>
-        <p className="text-sm text-white/40 tracking-wider">
+        <p className="text-sm text-white/40 tracking-wider pointer-events-none">
           Beweeg hand → cluster volgt &middot; Open = uitdijen &middot; Vuist = samentrekken &middot; Kantel = draaien &middot; Klap = explosie
         </p>
+        <div className="mt-3 flex gap-3 justify-center">
+          <a
+            href="/data-explosion"
+            className="px-4 py-1.5 text-xs tracking-widest uppercase text-cyan-400/70 border border-cyan-400/20 rounded-full hover:text-cyan-300 hover:border-cyan-400/50 hover:bg-cyan-400/5 transition-all duration-300"
+          >
+            Data Explosion
+          </a>
+          <a
+            href="/mobile-sphere"
+            className="px-4 py-1.5 text-xs tracking-widest uppercase text-cyan-400/70 border border-cyan-400/20 rounded-full hover:text-cyan-300 hover:border-cyan-400/50 hover:bg-cyan-400/5 transition-all duration-300"
+          >
+            Mobile Sphere
+          </a>
+        </div>
       </div>
 
       {/* Three.js Canvas */}
